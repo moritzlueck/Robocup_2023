@@ -1,53 +1,52 @@
 #ifndef DRIVE_FUNCTIONS_H_
 #define DRIVE_FUNCTIONS_H_
 
-#define PWMA			OCR4A
-#define PWMB			OCR4B
-#define DIRAPORT		PORTG
-#define DIRBPORT		PORTE
-#define DIRAPIN			PORTG5
-#define DIRBPIN			PORTE3
+#define pwm_right				OCR4A
+#define pwm_left				OCR4B
+#define direction_right_port	PORTG
+#define direction_left_port		PORTE
+#define direction_right_pin		PORTG5
+#define direction_left_pin		PORTE3
 
-void Forward (unsigned char, unsigned char); 
-void Backward (unsigned char, unsigned char);
-void Turn_right (unsigned char);
-void Turn_left (unsigned char);
-void Stop (void);
+void forward (unsigned char, unsigned char);
+void backward (unsigned char, unsigned char);
+void turn_right (unsigned char);
+void turn_left (unsigned char);
+void stop (void);
 
-
-void Forward (unsigned char velocity_A, unsigned char velocity_B) {
-	PWMA = 255 - velocity_A;
-	PWMB = 255 - velocity_B;
-	DIRAPORT |= (1 << DIRAPIN);
-	DIRBPORT |= (1 << DIRBPIN);
+void forward (unsigned char velocity_right, unsigned char velocity_left) {
+	pwm_right = velocity_right;
+	pwm_left = velocity_left;
+	direction_right_port &= ~(1<<direction_right_pin);
+	direction_left_port &= ~(1<<direction_left_pin);
 }
 
-void Backward (unsigned char velocity_A, unsigned char velocity_B) {
-	PWMA =  velocity_A;
-	PWMB =  velocity_B;
-	DIRAPORT &= ~(1 << DIRBPIN);
-	DIRBPORT &= ~(1 << DIRBPIN);
+void backward (unsigned char velocity_right, unsigned char velocity_left) {
+	pwm_right = 255 - velocity_right;
+	pwm_left = 255 - velocity_left;
+	direction_right_port |= (1<<direction_right_pin);
+	direction_left_port |= (1<<direction_left_pin);
 }
 
-void Turn_right (unsigned char velocity) {
-	PWMA = 255 - velocity;
-	PWMB = velocity;
-	DIRAPORT |=  (1 << DIRAPIN);
-	DIRBPORT &= ~(1 << DIRBPIN);
+void turn_right (unsigned char velocity) {
+	pwm_right = velocity;
+	pwm_left = 255 - velocity;
+	direction_right_port &= ~(1<<direction_right_pin);
+	direction_left_port |= (1<<direction_left_pin);
 }
 
-void Turn_left (unsigned char velocity) {
-	PWMA = velocity;
-	PWMB = 255 - velocity;
-	DIRAPORT &= ~(1 << DIRAPIN);
-	DIRBPORT |=  (1 << DIRBPIN);
+void turn_left (unsigned char velocity) {
+	pwm_right = 255 - velocity;
+	pwm_left = velocity;
+	direction_right_port |= (1<<direction_right_pin);
+	direction_left_port &= ~(1<<direction_left_pin);
 }
 
-void Stop (void) {
-	PWMA = 0;
-	PWMB = 0;
-	DIRAPORT &= ~(1 << DIRAPIN);
-	DIRBPORT &= ~(1 << DIRBPIN);
+void stop(void) {
+	pwm_right = 0;
+	pwm_left = 0;
+	direction_right_port &= ~(1<<direction_right_pin);
+	direction_left_port &= ~(1<<direction_left_pin);
 }
 
-#endif
+#endif /* DRIVE_FUNCTIONS_H_ */
