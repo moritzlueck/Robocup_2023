@@ -72,7 +72,7 @@ ISR(TIMER2_OVF_vect) { //every 128 us
 	}
 	
 	color_clock++;
-	if (color_clock == 80) {
+	if (color_clock == 64) {
 		color_clock = 0;
 		color = TCNT0;
 		TCNT0 = 0;
@@ -95,7 +95,7 @@ ISR(TIMER2_OVF_vect) { //every 128 us
 		else USART_Transmit(Trans_data[Counter_Transmission]); //One digit after another
 	}
 	if (!usart_clock) {
-		PINB |= (1<<PINB7);
+		//PINB |= (1<<PINB7);
 	}
 	
 }
