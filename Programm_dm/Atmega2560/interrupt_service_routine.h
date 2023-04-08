@@ -38,7 +38,7 @@ unsigned char junk;
 unsigned char adc_clock;
 unsigned char adc_channel;
 unsigned char adc_channel_counter;
-unsigned char analogue_value[10];
+unsigned char analogue_value[12];
 
 /*----------USART----------*/
 unsigned char Counter_Transmission;
@@ -50,6 +50,13 @@ unsigned char t2ck_i2c;
 unsigned char delay;
 
 extern unsigned char data[10];
+
+/*----------I2C----------*/
+unsigned char i2c_counter = 0;
+unsigned char Register[8] = {0,  1,  2,  3, //First line
+		16, 17, 18, 19};
+unsigned char k = 0;
+unsigned char TWI_Counter = 0;
 
 ISR(TIMER2_OVF_vect) { //every 128 us
 	
@@ -76,6 +83,17 @@ ISR(TIMER2_OVF_vect) { //every 128 us
 		color_clock = 0;
 		color = TCNT0;
 		TCNT0 = 0;
+	}
+	
+	//i2c_counter++; //Counter of Timer2 interrupts
+	if (i2c_counter == 80) { //~10ms, 128us * 80 = 10240us
+		i2c_counter = 0; //Reset
+		k++; //Counter of data to be transmit to LCD
+		if (k == 8) k = 0; //8 datas
+		TWI_Counter = 0; //Number of TWI interrupts
+		i2c_Start(); //Send start condition to TWI bus
+		TWDR = (0x20 << 1); //Address and write(0)
+		TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWIE); //Initialize the transmission, enable TWI-Interrupt
 	}
 	
 	usart_clock++;
@@ -131,13 +149,34 @@ ISR(INT5_vect)  {
 ISR(ADC_vect) {
 	analogue_value[adc_channel_counter] = ADCH;
 	adc_channel_counter++;
-	if (adc_channel_counter == 10) adc_channel_counter = 0;
+	if (adc_channel_counter == 12) adc_channel_counter = 0;
 	if (adc_channel_counter > 7) {
 		adc_channel = adc_channel_counter - 8;
 		ADCSRB |= (1<<MUX5);
 	} else {
 		adc_channel = adc_channel_counter;
 		ADCSRB &= ~(1<<MUX5);
+	}
+}
+
+ISR(TWI_vect) {
+	switch (TWI_Counter) {
+		case 0 : //TWI has been started in ISR Timer2 overflow
+			TWDR = Register[k]; //Write the tabulator
+			TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA) | (1<<TWIE); //Initialize the transmission, interrupt enable
+			TWI_Counter++;
+			break;
+		case 1 : //TWI has been started in ISR Timer2 overflow
+			TWDR = data[k]; //Write the tabulator
+			TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA) | (1<<TWIE); //Initialize the transmission, interrupt enable
+			TWI_Counter++;
+			break;
+		case 2 : //Save PEC, but we don´t need it! And then stop the transmission
+			TWCR= (1<<TWINT)|(1<<TWEN)|(1<<TWSTO); //Send stop condition, no more TWI interrupt
+			break;
+		default :
+			TWCR = (1<<TWINT)|(1<<TWEN);
+			break;
 	}
 }
 
