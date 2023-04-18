@@ -86,10 +86,11 @@
 #define ultrasonic_wall_drive 25	//note that the value is used in combination with a < operator
 
 /*----------color sensor related values----------*/
-#define color_victm 14
-#define color_victm_high 20
-#define color_victm_low 10
-#define color_checkpoint_threshold 70
+#define color_victm_default 14
+#define color_victm_high_default 20
+#define color_victm_low_default 10
+#define color_checkpoint_threshold_default 70
+#define color_victm_range 6
 
 #define greyscale_black_threshold 100
 
@@ -183,8 +184,17 @@
 #define angle_down					!(PINA & (1<<PA7))
 #define angle						!(PINA & 0b11000000)
 
-/*----------lack-of-progress switch----------*/
-#define lack_of_progress_switch !(PINC & (1<<PC7))
+/*----------buttons/switches----------*/
+#define lack_of_progress_switch		!(PINC & (1<<PC7))
+#define calibration_button			!(PINA &(1<<PA1))
+
+/*----------color sensor----------*/
+unsigned char color_victm = color_victm_default;
+unsigned char color_victm_high = color_victm_high_default;
+unsigned char color_victm_low = color_victm_low_default;
+unsigned char color_checkpoint = 0;
+unsigned char color_checkpoint_threshold = color_checkpoint_threshold_default;
+unsigned char color_white = 0;
 
 /*----------data visualizer numbers----------*/
 unsigned char data[10];
@@ -333,6 +343,10 @@ void transmit_sensor_data(void);
 void transmit_run_start(void );
 void color_sensor_mode(unsigned char mode);
 
+void reset_run_time(void);
+
+void calibrate(void);
+
 int main(void) {
     
 	init();
@@ -354,20 +368,27 @@ int main(void) {
 	led_green_off;
 		
 	while(0) {
-		forward(255,255);
+		led_white_on;
+		led_array_on;
+		_delay_ms(200);
+		led_white_off;
+		led_array_off;
+		_delay_ms(200);
 	} 
 	
+	if (calibration_button) calibrate();
+	
 	while (lack_of_progress_switch) {
-		data[0] = ir_front_right;
-		data[1] = ir_front_left;
-		data[2] = ir_right_front;
-		data[3] = ir_right_back;
-		data[4] = ir_back_right;
-		data[5] = ir_back_left;
+		data[0] = color_victm;//ir_front_right;
+		data[1] = color_victm_high;//ir_front_left;
+		data[2] = color_victm_low;//ir_right_front;
+		data[3] = color_white;//ir_right_back;
+		data[4] = color_checkpoint;//ir_back_right;
+		data[5] = color_checkpoint_threshold;//ir_back_left;
 		data[6] = ir_left_front;
-		data[7] = color;
-		data[8] = ir_front_middle_right;
-		data[9] = ultrasonic_front;
+		data[7] = ir_left_back;
+		data[8] = color;
+		data[9] = (angle_up || angle_down);
 		transmit_sensor_data();
 		
 		if(color > color_victm_low && color < color_victm_high) {
@@ -388,12 +409,12 @@ int main(void) {
 		else led_array_3_off;
 		if (ir_left_front > ir_wall_threshold && ir_left_back > ir_wall_threshold && ultrasonic_left < ultrasonic_wall_threshold_side) led_array_4_on;
 		else led_array_4_off;
-	} _delay_ms(500);
-	
+	}
+	reset_run_time();
+	 _delay_ms(100);
 	lack_of_progress_flag = 0;
 	lack_of_progress = 0;
 	led_array_direction |= (1<<0);
-	
 	
 	while(1) {
 		 handle_map();
@@ -492,10 +513,10 @@ void drive(void) {
 	wall_detected_while_driving = 0;
 	driving_angle_detection_failed = 0;
 	led_white_off;
-	while((encoder_counter < encoder_drive || angle_up) && !lack_of_progress_flag) {
+	while((encoder_counter < encoder_drive || angle_up || angle_down) && !lack_of_progress_flag) {
 		
 		drive_ir();
-		PINB |= (1<<PINB7);
+		//PINB |= (1<<PINB7);
 		
 		if (eject_while_driving && encoder_counter > encoder_drive_before_ejection) {
 			stop();
@@ -731,7 +752,7 @@ void drive(void) {
 			position_x_est += dx[direction_est % 4];
 			position_y_est += dy[direction_est % 4];
 		}
-	} else if (encoder_counter < encoder_drive_too_few_steps  && !lack_of_progress_flag) {
+	} else if (encoder_counter < encoder_drive_too_few_steps && !black_tile && !lack_of_progress_flag) {
 		driving_failed = 1;
 		led_blue_on;
 		_delay_ms(100);
@@ -817,9 +838,10 @@ void return_to_start(void) {
 	direction = direction_est;
 	position_x = position_x_est;
 	position_y = position_y_est;
+	clear_black_tile();
 	align_ir();
 	if (black_tile && !lack_of_progress_flag) {
-		if (!(wall_rel & wf) && !check_known_black_tile(1)) turn(0,0);
+		if (!(wall_rel & wr) && !check_known_black_tile(1)) turn(0,0);
 		else if (!(wall_rel & wb) && !check_known_black_tile(2)) {
 			 turn(0,0);
 			 align_ir();
@@ -842,7 +864,7 @@ void return_to_start(void) {
 			if (!(wall_rel & wr) && !check_known_black_tile(1)) turn_direction = 1;
 			else if (!(wall_rel & wb) && !check_known_black_tile(2)) turn_direction = 2;
 			else if (!(wall_rel & wl) && !check_known_black_tile(3)) turn_direction = 3;
-			} else if (!lack_of_progress_flag) {
+		} else if (!lack_of_progress_flag) {
 			if (!(wall_rel & wl) && !check_known_black_tile(3)) turn_direction = 3;
 			else if (!(wall_rel & wf) && !check_known_black_tile(0)) turn_direction = 0;
 			else if (!(wall_rel & wr) && !check_known_black_tile(1)) turn_direction = 1;
@@ -1010,6 +1032,7 @@ void handle_map(void) {
 		lack_of_progress_flag = 0;
 		lack_of_progress = 1;
 		victm_flag= 0;
+		victm_identified = 0;
 		black_tile = 0;
 		eject_while_driving = 0;
 		recover_start_tile_counter = 0;
@@ -1274,18 +1297,21 @@ unsigned char calculate_absolute_wall(unsigned char direction_input, unsigned ch
 }
 
 void servo_home(void) {
-	cli();
+	//cli();
 	for (unsigned char i = 0; i < servo_signal_length; i++) {
 		servo_high;
 		_delay_us(servo_home_pulse);
 		servo_low;
-		_delay_ms(20);
+		_delay_us(20000);
 	}
-	sei();
+	//unsigned long temp_time = TCNT5 + ((servo_signal_length * (20000 + servo_home_pulse)) / 64);
+	//run_time += temp_time / 15625;
+	//TCNT5 = temp_time % 15625;
+	//sei();
 }
 
 void eject(void) {
-	cli();
+	//cli();
 	servo_home();
 	for (unsigned char i = 0; i < servo_signal_length; i++) {
 		servo_high;
@@ -1294,7 +1320,7 @@ void eject(void) {
 		_delay_ms(20);
 	}
 	servo_home();
-	sei();
+	//sei();
 }
 
 void color_sensor_mode(unsigned char mode) {
@@ -1399,6 +1425,7 @@ void add_victm(void) {
 		map[position_x][position_y][area] |= victm_map;
 	}
 	victm_counter++;
+	transmit_map_data();
 }
 
 bool check_known_victm(void) {
@@ -1432,25 +1459,32 @@ unsigned char get_next_position_y (unsigned char direction_input) {
 	return position_y + dy[direction_next];
 }
 
+void reset_run_time(void) {
+	TCNT5 = 0;
+	run_time = 0;	
+}
+
 void transmit_map_data(unsigned char mode) { //mode = 0: Normal operation	|	mode = 1: Black tile detected
-	if (display_enable) {
+	if (0) {
 		i2c_Start();
 		i2c_Address(0x20, 0);
 		i2c_Write(direction);
-		i2c_Write(position_x);
-		i2c_Write(position_y);
-		if (mode) i2c_Write(map[get_next_position_x(direction)][get_next_position_y(direction)][area]);
-		else i2c_Write(map[position_y][position_x][area]);
-		i2c_Write(last_checkpoint_direction);
-		i2c_Write(last_checkpoint_position_x);
-		i2c_Write(last_checkpoint_position_y);
+		if (mode) {
+			i2c_Write(get_next_position_x(direction));
+			i2c_Write(get_next_position_y(direction));
+			i2c_Write(map[get_next_position_x(direction)][get_next_position_y(direction)][area]);
+		} else {
+			i2c_Write(position_x);
+			i2c_Write(position_y);
+			i2c_Write(map[position_y][position_x][area]);
+		}
 		i2c_Write(wall_rel);
 		i2c_Stop();
 	}
 }
 
 void transmit_sensor_data(void) {
-	if (display_enable) {
+	if (0) {
 		i2c_Start();
 		i2c_Address(0x20, 0);
 		for (unsigned char i = 0; i < 10; i++) i2c_Write(data[i]);
@@ -1458,11 +1492,40 @@ void transmit_sensor_data(void) {
 	}
 }
 
-void transmit_run_start() {
-	if (display_enable) {
+void transmit_run_start(void) {
+	if (0) {
 		i2c_Start();
 		i2c_Address(0x20, 0);
 		for (unsigned char i = 0; i < 10; i++) i2c_Write(255);
 		i2c_Stop();
 	}
+}
+
+void calibrate(void) {
+	led_array_5_on;
+	while (calibration_button);
+	_delay_ms(50); // debounce
+	led_red_on;
+	while (!(calibration_button));
+	_delay_ms(50); //debounce
+	color_victm = color;
+	led_red_off;
+	while (calibration_button);
+	_delay_ms(50); // debounce
+	led_green_on;
+	while (!(calibration_button));
+	_delay_ms(50); //debounce
+	color_checkpoint = color;
+	led_green_off;
+	while (calibration_button);
+	_delay_ms(50); // debounce
+	led_white_on;
+	while (!(calibration_button));
+	_delay_ms(50); //debounce
+	color_white = color;
+	led_white_off;
+	color_victm_high = color_victm + color_victm_range;
+	color_victm_low = color_victm - color_victm_range;	
+	color_checkpoint_threshold = color_white + ((color_checkpoint - color_white) / 2); //middle between white and checkpoint
+	led_array_off;
 }

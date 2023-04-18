@@ -38,10 +38,10 @@ void init() {
 	TIMSK4 = 0b00000000;
 	
 	TCCR5A = 0b00000000;
-	TCCR5B = 0b00001101; //timer reset if value reached OCR5A, prescaler 1:1024
-	TIMSK5 = 0b00000110; //OCR5B and OCR5A
-	OCR5A  = 15625; //every 1s
-	OCR5B  = 7815;	//every ~0.5s 
+	TCCR5B = 0b00001101;	//timer reset if value reached OCR5A, prescaler 1:1024
+	TIMSK5 = 0b00000010;	//OCR5B and OCR5A Interrupt
+	OCR5A  = 15625;			//every 1s
+	//OCR5B  = 7815;			//every ~0.5s 
 	
 	/*---------externel interrupt configuration----------*/
 	EICRA = 0b10100000;
@@ -51,13 +51,12 @@ void init() {
 	/*---------adc configuration----------*/
 	ADMUX  = 0b01100001;
 	ADCSRA = 0b11001110;
-	
+
 	/*---------i2c configuration----------*/
-	TWBR = 12;  //400.000Hz (400kHz), TWBR =(CPU-Frequ. / 2*Baudrate) - 8, Baudrate = 100kHz
-	
-	TWSR &= 0b11111100;  //no change to the initial values: Prescaler 1:1
-	TWCR = (1<<TWEN) | (1<<TWEA);
-	
+	//TWBR = 72;  //100.000Hz (100kHz), TWBR =(CPU-Frequ. / 2*Baudrate) - 8, Baudrate = 100kHz
+	//TWSR &= 0b11111100;  //no change to the initial values: Prescaler 1:1
+	TWCR = (1<<TWIE) | (1<<TWEA) | (1<<TWINT) | (1<<TWEN); // set the TWCR to enable address matching and enable TWI, clear TWINT, enable TWI interrupt
+	TWAR = (0x20 << 1); //slave adress
 }
 
 
