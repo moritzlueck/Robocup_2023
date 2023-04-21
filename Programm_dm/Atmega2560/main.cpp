@@ -306,7 +306,7 @@ signed int encoder_counter_temp_contact = 0;
 signed int encoder_counter_temp_align_ir_side = 0;
 
 /*----------display----------*/
-unsigned char display_status = 0;
+unsigned char display_status = display_status_calibration;
 
 /*---------testing variables----------*/
 unsigned char temp_1 = 0;
@@ -345,10 +345,8 @@ unsigned char get_min_side(unsigned char value_front, unsigned char value_right,
 unsigned char get_next_position_x(unsigned char direction_input);
 unsigned char get_next_position_y(unsigned char direction_input);
 
-void display_data(void);
-void transmit_map_data(unsigned char mode = 0);
-void transmit_sensor_data(void);
-void transmit_run_start(void );
+void set_data(void);
+void set_display_data(unsigned char mode = 0);
 void color_sensor_mode(unsigned char mode);
 
 void reset_run_time(void);
@@ -376,7 +374,7 @@ int main(void) {
 	led_green_off;
 		
 	while(0) {
-		transmit_map_data();
+		set_display_data();
 		led_green_on;
 		//turn(1,0);
 		//_delay_ms(3000);
@@ -385,7 +383,7 @@ int main(void) {
 	if (calibration_button) calibrate();
 	
 	while (lack_of_progress_switch) {
-		data[0] = color_victm;//ir_front_right;
+		data[0] = display_status;//color_victm;//ir_front_right;
 		data[1] = color_victm_high;//ir_front_left;
 		data[2] = color_victm_low;//ir_right_front;
 		data[3] = color_white;//ir_right_back;
@@ -395,7 +393,8 @@ int main(void) {
 		data[7] = greyscale_left;//ir_left_back;
 		data[8] = color;
 		data[9] = (angle_up || angle_down);
-		transmit_sensor_data();
+		
+		set_display_data();
 		
 		if(calibration_button) {
 			led_array_on;
@@ -439,14 +438,14 @@ int main(void) {
 	}
 	reset_run_time();
 	 _delay_ms(100);
-	 display_status = display_status_run;
+	display_status = display_status_run;
 	lack_of_progress_flag = 0;
 	lack_of_progress = 0;
 	led_array_direction |= (1<<0);
 	
 	while(1) {
 		 handle_map();
-		 transmit_map_data();
+		 set_display_data();
 		 if ((black_tile || (driving_failed && wall_detected_while_driving && turn_direction == 1)) && !lack_of_progress_flag) {
 			 if (!(wall_rel & wl) && !check_known_black_tile(3)) turn_direction = 3;
 			 else if (!(wall_rel & wb) && !check_known_black_tile(2)) turn_direction = 2;
@@ -457,7 +456,7 @@ int main(void) {
 			 else if (!(wall_rel & wl) && !check_known_black_tile(3)) turn_direction = 3;
 			 else if (!(wall_rel & wb) && !check_known_black_tile(2)) turn_direction = 2;
 		 }
-		 display_data();
+		set_data();
 		 if (victm_flag && !(map[position_x][position_y][area] & victm_map) && !checkpoint && !lack_of_progress_flag) {
 			victm_identified = 1;
 			blink_rescue();
@@ -510,14 +509,14 @@ int main(void) {
 			 rescue();
 			 victm_flag = 0;
 		 }
-		 transmit_map_data();
+		 set_display_data();
 		 deleay_between_movement;
 		 if (/*!turning_failed && */!lack_of_progress_flag) drive();
 		 deleay_between_movement; 
 	}
 }
 
-void display_data(void) {
+void set_data(void) {
 	data[0] = check_known_black_tile(1);
 	data[1] = wall;
 	data[2] = 0;
@@ -545,7 +544,7 @@ void drive(void) {
 	while((encoder_counter < encoder_drive || angle_up || angle_down) && !lack_of_progress_flag) {
 		
 		drive_ir();
-		//PINB |= (1<<PINB7);
+		PINB |= (1<<PINB7);
 		
 		if (eject_while_driving && encoder_counter > encoder_drive_before_ejection) {
 			stop();
@@ -559,7 +558,7 @@ void drive(void) {
 				stop();
 				black_tile = 1;
 				add_black_tile();
-				//transmit_map_data(1);
+				set_display_data(1);
 				if (eject_while_driving) {
 					eject();
 					eject_while_driving = 0;
@@ -815,7 +814,7 @@ void drive_ir(void) {
 }
 
 void turn(unsigned char mode, unsigned char power_turn) {
-	display_data();
+	set_data();
 	encoder_counter = 0;
 	if (!mode) {
 		direction_last = direction;
@@ -840,7 +839,7 @@ void turn(unsigned char mode, unsigned char power_turn) {
 	if (turning_failed_detection) {
 		detect_wall_quick(direction);
 		if (wall != wall_quick_abs && ramp != 1 && wall != 0b00001010 && wall != 0b00000101) {
-			display_data();
+			set_data();
 			led_blue_on;
 			wall_before_turn = wall;
 			led_blue_off;
@@ -858,7 +857,7 @@ void turn(unsigned char mode, unsigned char power_turn) {
 			} else turning_failed = 0;
 		} else turning_failed = 0;
 	}
-	display_data();
+	set_data();
 	led_array_direction &= 0b11110000;
 	led_array_direction |= (1<<(direction % 4));
 }
@@ -899,7 +898,7 @@ void return_to_start(void) {
 			else if (!(wall_rel & wr) && !check_known_black_tile(1)) turn_direction = 1;
 			else if (!(wall_rel & wb) && !check_known_black_tile(2)) turn_direction = 2;
 		}
-		display_data();
+		set_data();
 		if (checkpoint && !lack_of_progress_flag) exit();
 		if (!lack_of_progress_flag) {
 			switch(turn_direction) {
@@ -942,7 +941,7 @@ void return_to_start_new(void) {
 	position_x = position_x_est;
 	position_y = position_y_est;
 	area = 0; //TEMP!!!!
-	display_data();
+	set_data();
 	return_to_tile(start_position, start_position, 0);
 	if(!lack_of_progress_flag) exit();
 }
@@ -963,7 +962,7 @@ void return_to_tile(unsigned char position_x_input, unsigned char position_y_inp
 		//path_value_back = map_path[position_x + dx[(direction + 2) % 4]][position_y + dy[(direction + 2) % 4]][0];
 		//path_value_left = map_path[position_x + dx[(direction + 3) % 4]][position_y + dy[(direction + 3) % 4]][0];
 		turn_direction = get_min_side(path_value_front, path_value_right, path_value_back, path_value_left);	
-		display_data();	
+		set_data();	
 		if (!lack_of_progress_flag) {
 			switch(turn_direction) {
 				case 0:
@@ -994,7 +993,7 @@ void return_to_tile(unsigned char position_x_input, unsigned char position_y_inp
 void plan_path(unsigned char position_x_input, unsigned char position_y_input, unsigned char area_input) {
 	path_value_counter = 0;
 	clear_map_path_array();
-	display_data();
+	set_data();
 	_delay_ms(5000);
 	map_path[position_x_input][position_y_input][0] = 0;
 	while (map_path[position_x][position_y][0] == 255) {
@@ -1009,10 +1008,10 @@ void plan_path(unsigned char position_x_input, unsigned char position_y_input, u
 			}
 		}
 		path_value_counter++;
-		display_data();
+		set_data();
 		_delay_ms(10000);
 	}
-	display_data();
+	set_data();
 	_delay_ms(10000);
 }
 
@@ -1045,10 +1044,11 @@ unsigned char get_min_side(unsigned char value_front, unsigned char value_right,
 
 
 void handle_map(void) {
-	display_data();
+	set_data();
 	if (lack_of_progress_flag) {
 		stop();
 		display_status = display_status_lop;
+		set_display_data();
 		led_white_off;
 		while(lack_of_progress_switch) {
 			led_blue_on;
@@ -1072,7 +1072,7 @@ void handle_map(void) {
 	} else lack_of_progress = 0;
 	align_ir();
 	detect_wall();
-	display_data();
+	set_data();
 	if (recover_start_tile_counter && !lack_of_progress_flag) {
 		if (recover_start_error && !(driving_failed || driving_angle_detection_failed)) recover_start_tile_counter = 0;
 		else if ((map[position_x_est][position_y_est][0] & wall_map) == wall_est && !lack_of_progress_flag) {
@@ -1309,7 +1309,7 @@ void detect_wall(void) {
 	wall_est = calculate_absolute_wall(direction_est, wall_rel);
 	led_array_off;
 	led_array |= wall_rel;
-	display_data();
+	set_data();
 }
 
 void detect_wall_quick(unsigned char direction_input) {
@@ -1405,6 +1405,7 @@ void blink_rescue(void) {
 
 void exit(void) {
 	display_status = display_status_end;
+	set_display_data();
 	led_array_off;
 	led_white_on;
 	led_array_direction &= 0b11110000;
@@ -1457,7 +1458,7 @@ void add_victm(void) {
 		map[position_x][position_y][area] |= victm_map;
 	}
 	victm_counter++;
-	transmit_map_data();
+	set_display_data();
 }
 
 bool check_known_victm(void) {
@@ -1496,50 +1497,50 @@ void reset_run_time(void) {
 	run_time = 0;	
 }
 
-void transmit_map_data(unsigned char mode) { //mode = 0: Normal operation	|	mode = 1: Black tile detected
+void set_display_data(unsigned char mode) { //mode = 0: Normal operation	|	mode = 1: Black tile detected
 	if (display_enable) {
 		if (display_status) {
 			if (mode) {
-				map_data[0] = map[get_next_position_x(0)][get_next_position_y(0)][area];
-				map_data[1] = get_next_position_x(0) | ((direction % 4) << 6);
-				map_data[2] = get_next_position_y(0) | display_status;
+				display_data[0] = map[get_next_position_x(0)][get_next_position_y(0)][area];
+				display_data[1] = get_next_position_x(0) | ((direction % 4) << 6);
+				display_data[2] = get_next_position_y(0) | display_status;
 			} else {
-				map_data[0] = map[position_x][position_y][area];
-				map_data[1] = position_x | ((direction % 4) << 6);
-				map_data[2] = position_y | display_status;
+				display_data[0] = map[position_x][position_y][area];
+				display_data[1] = position_x | ((direction % 4) << 6);
+				display_data[2] = position_y | display_status;
 			}
 		} else {
-			data[0] = color;;
-			data[1] = greyscale_right;
-			data[2] = greyscale_left;
+			display_data[0] = color;
+			display_data[1] = greyscale_right;
+			display_data[2] = display_status;
 		}
 	}
 }
 
 void calibrate(void) {
 	led_array_5_on;
-	while (calibration_button);
+	while (calibration_button) set_display_data();
 	_delay_ms(50); // debounce
 	led_red_on;
-	while (!(calibration_button));
+	while (!(calibration_button)) set_display_data();
 	_delay_ms(50); //debounce
 	color_victm = color;
 	led_red_off;
-	while (calibration_button);
+	while (calibration_button) set_display_data();
 	_delay_ms(50); // debounce
 	led_white_on;
-	while (!(calibration_button));
+	while (!(calibration_button)) set_display_data();
 	_delay_ms(50); //debounce
 	color_white = color;
 	led_white_off;
-	while (calibration_button);
+	while (calibration_button) set_display_data();
 	_delay_ms(50); // debounce
 	led_green_on;
-	while (!(calibration_button));
+	while (!(calibration_button)) set_display_data();
 	_delay_ms(50); //debounce
 	color_checkpoint = color;
 	led_green_off;
-	while (calibration_button);
+	while (calibration_button) set_display_data();
 	_delay_ms(50); // debounce
 	color_victm_high = color_victm + color_victm_range;
 	color_victm_low = color_victm - color_victm_range;	
