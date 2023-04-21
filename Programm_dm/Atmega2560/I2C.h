@@ -31,6 +31,7 @@ void i2c_Wait(void) {
 void i2c_Start(void) {
 	TWCR = (1<<TWINT)|(1<<TWSTA)|(1<<TWEN); //Start transmission, no interrupt
 	i2c_Wait();
+	 PORTL |= (1 << PORTL0);
 }
 
 void i2c_Restart(void) {

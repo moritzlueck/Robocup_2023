@@ -26,7 +26,7 @@
 #define turning_failed_detection 1
 #define clear_black_tile_after_ramp 1
 
-#define display_enable 0
+#define display_enable 1
 
 #define deleay_between_movement if(1) _delay_ms(100)
 
@@ -92,7 +92,7 @@
 #define color_checkpoint_threshold_default 70
 #define color_victm_range 6
 
-#define greyscale_black_threshold 100
+#define greyscale_black_threshold 80
 
 /*----------servo values----------*/
 #define servo_home_pulse 500
@@ -117,6 +117,11 @@
 #define black_tile_map				0b00100000
 #define checkpoint_map				0b01000000
 #define visited_map					0b10000000
+
+#define display_status_calibration	0b00000000
+#define display_status_run			0b01000000
+#define display_status_lop			0b10000000
+#define display_status_end			0b11000000
 
 /*----------led----------*/
 #define led_array					PORTL
@@ -186,7 +191,7 @@
 
 /*----------buttons/switches----------*/
 #define lack_of_progress_switch		!(PINC & (1<<PC7))
-#define calibration_button			!(PINA &(1<<PA1))
+#define calibration_button			!(PINA &(1<<PA4))
 
 /*----------color sensor----------*/
 unsigned char color_victm = color_victm_default;
@@ -300,6 +305,9 @@ unsigned char encoder_counter_before_ramp = 0;
 signed int encoder_counter_temp_contact = 0;
 signed int encoder_counter_temp_align_ir_side = 0;
 
+/*----------display----------*/
+unsigned char display_status = 0;
+
 /*---------testing variables----------*/
 unsigned char temp_1 = 0;
 unsigned char temp_2 = 0;
@@ -368,12 +376,10 @@ int main(void) {
 	led_green_off;
 		
 	while(0) {
-		led_white_on;
-		led_array_on;
-		_delay_ms(200);
-		led_white_off;
-		led_array_off;
-		_delay_ms(200);
+		transmit_map_data();
+		led_green_on;
+		//turn(1,0);
+		//_delay_ms(3000);
 	} 
 	
 	if (calibration_button) calibrate();
@@ -385,11 +391,32 @@ int main(void) {
 		data[3] = color_white;//ir_right_back;
 		data[4] = color_checkpoint;//ir_back_right;
 		data[5] = color_checkpoint_threshold;//ir_back_left;
-		data[6] = ir_left_front;
-		data[7] = ir_left_back;
+		data[6] = greyscale_right;//ir_left_front;
+		data[7] = greyscale_left;//ir_left_back;
 		data[8] = color;
 		data[9] = (angle_up || angle_down);
 		transmit_sensor_data();
+		
+		if(calibration_button) {
+			led_array_on;
+			_delay_ms(100);
+			led_array_off;
+			_delay_ms(100);
+			led_array_on;
+			_delay_ms(100);
+			led_array_off;
+			for (unsigned char i = 0; i < 5; i++) {
+				_delay_ms(100);
+				led_array |= (1 << i);
+			}
+			for (unsigned char i = 0; i < 5; i++) {
+				_delay_ms(860);
+				led_array &= ~(1 << i);
+			}
+			eject();
+			while (calibration_button);
+			_delay_ms(50); // debounce
+		}
 		
 		if(color > color_victm_low && color < color_victm_high) {
 			led_red_on;
@@ -412,6 +439,7 @@ int main(void) {
 	}
 	reset_run_time();
 	 _delay_ms(100);
+	 display_status = display_status_run;
 	lack_of_progress_flag = 0;
 	lack_of_progress = 0;
 	led_array_direction |= (1<<0);
@@ -467,6 +495,7 @@ int main(void) {
 		 detect_wall_quick(0);
 		 if (checkpoint && wall_quick_abs == (map[start_position][start_position][0] & wall_map) && victm_counter /*rescue_counter >= 5 && checkpoint_counter > 2*/ && start_tile_recovery && !lack_of_progress_flag) {
 			 recover_start_tile_counter++;
+			 recover_start_error = 0;
 			 direction_est = 0;
 			 position_x_est = start_position;
 			 position_y_est = start_position;
@@ -1019,6 +1048,7 @@ void handle_map(void) {
 	display_data();
 	if (lack_of_progress_flag) {
 		stop();
+		display_status = display_status_lop;
 		led_white_off;
 		while(lack_of_progress_switch) {
 			led_blue_on;
@@ -1036,6 +1066,7 @@ void handle_map(void) {
 		black_tile = 0;
 		eject_while_driving = 0;
 		recover_start_tile_counter = 0;
+		display_status = display_status_run;
 		if (drive_after_lop) drive();
 		deleay_between_movement;
 	} else lack_of_progress = 0;
@@ -1373,6 +1404,7 @@ void blink_rescue(void) {
 }
 
 void exit(void) {
+	display_status = display_status_end;
 	led_array_off;
 	led_white_on;
 	led_array_direction &= 0b11110000;
@@ -1465,39 +1497,22 @@ void reset_run_time(void) {
 }
 
 void transmit_map_data(unsigned char mode) { //mode = 0: Normal operation	|	mode = 1: Black tile detected
-	if (0) {
-		i2c_Start();
-		i2c_Address(0x20, 0);
-		i2c_Write(direction);
-		if (mode) {
-			i2c_Write(get_next_position_x(direction));
-			i2c_Write(get_next_position_y(direction));
-			i2c_Write(map[get_next_position_x(direction)][get_next_position_y(direction)][area]);
+	if (display_enable) {
+		if (display_status) {
+			if (mode) {
+				map_data[0] = map[get_next_position_x(0)][get_next_position_y(0)][area];
+				map_data[1] = get_next_position_x(0) | ((direction % 4) << 6);
+				map_data[2] = get_next_position_y(0) | display_status;
+			} else {
+				map_data[0] = map[position_x][position_y][area];
+				map_data[1] = position_x | ((direction % 4) << 6);
+				map_data[2] = position_y | display_status;
+			}
 		} else {
-			i2c_Write(position_x);
-			i2c_Write(position_y);
-			i2c_Write(map[position_y][position_x][area]);
+			data[0] = color;;
+			data[1] = greyscale_right;
+			data[2] = greyscale_left;
 		}
-		i2c_Write(wall_rel);
-		i2c_Stop();
-	}
-}
-
-void transmit_sensor_data(void) {
-	if (0) {
-		i2c_Start();
-		i2c_Address(0x20, 0);
-		for (unsigned char i = 0; i < 10; i++) i2c_Write(data[i]);
-		i2c_Stop();
-	}
-}
-
-void transmit_run_start(void) {
-	if (0) {
-		i2c_Start();
-		i2c_Address(0x20, 0);
-		for (unsigned char i = 0; i < 10; i++) i2c_Write(255);
-		i2c_Stop();
 	}
 }
 
@@ -1512,6 +1527,13 @@ void calibrate(void) {
 	led_red_off;
 	while (calibration_button);
 	_delay_ms(50); // debounce
+	led_white_on;
+	while (!(calibration_button));
+	_delay_ms(50); //debounce
+	color_white = color;
+	led_white_off;
+	while (calibration_button);
+	_delay_ms(50); // debounce
 	led_green_on;
 	while (!(calibration_button));
 	_delay_ms(50); //debounce
@@ -1519,11 +1541,6 @@ void calibrate(void) {
 	led_green_off;
 	while (calibration_button);
 	_delay_ms(50); // debounce
-	led_white_on;
-	while (!(calibration_button));
-	_delay_ms(50); //debounce
-	color_white = color;
-	led_white_off;
 	color_victm_high = color_victm + color_victm_range;
 	color_victm_low = color_victm - color_victm_range;	
 	color_checkpoint_threshold = color_white + ((color_checkpoint - color_white) / 2); //middle between white and checkpoint

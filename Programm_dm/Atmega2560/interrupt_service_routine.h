@@ -50,6 +50,7 @@ unsigned char t2ck_i2c;
 unsigned char delay;
 
 extern unsigned char data[10];
+unsigned char map_data[5] = {0, 12, 13, 0, 0};
 
 /*----------I2C----------*/
 unsigned char i2c_counter = 0;
@@ -90,15 +91,15 @@ ISR(TIMER2_OVF_vect) { //every 128 us
 	}
 	
 	//i2c_counter++; //Counter of Timer2 interrupts
-	//if (i2c_counter == 80) { //~10ms, 128us * 80 = 10240us
-		//i2c_counter = 0; //Reset
-		//k++; //Counter of data to be transmit to LCD
-		//if (k == 8) k = 0; //8 datas
-		//TWI_counter = 0; //Number of TWI interrupts
-		//i2c_Start(); //Send start condition to TWI bus
-		//TWDR = (0x20 << 1); //Address and write(0)
-		//TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWIE); //Initialize the transmission, enable TWI-Interrupt
-	//}
+	if (i2c_counter == 80) { //~10ms, 128us * 80 = 10240us
+		i2c_counter = 0; //Reset
+		k++; //Counter of data to be transmit to LCD
+		if (k == 8) k = 0; //8 datas
+		TWI_counter = 0; //Number of TWI interrupts
+		i2c_Start(); //Send start condition to TWI bus
+		TWDR = (0x20 << 1); //Address and write(0)
+		TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWIE); //Initialize the transmission, enable TWI-Interrupt
+	}
 	
 	usart_clock++;
 	if (usart_clock & 0b00000001) { //Every 256us,
@@ -167,18 +168,18 @@ ISR(ADC_vect) {
 		ADCSRB &= ~(1<<MUX5);
 	}
 }
-//
+
 //ISR(TWI_vect) {
-	//switch (TWI_Counter) {
+	//switch (TWI_counter) {
 		//case 0 : //TWI has been started in ISR Timer2 overflow
 			//TWDR = Register[k]; //Write the tabulator
 			//TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA) | (1<<TWIE); //Initialize the transmission, interrupt enable
-			//TWI_Counter++;
+			//TWI_counter++;
 			//break;
 		//case 1 : //TWI has been started in ISR Timer2 overflow
 			//TWDR = data[k]; //Write the tabulator
 			//TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA) | (1<<TWIE); //Initialize the transmission, interrupt enable
-			//TWI_Counter++;
+			//TWI_counter++;
 			//break;
 		//case 2 : //Save PEC, but we don´t need it! And then stop the transmission
 			//TWCR= (1<<TWINT)|(1<<TWEN)|(1<<TWSTO); //Send stop condition, no more TWI interrupt
@@ -190,43 +191,33 @@ ISR(ADC_vect) {
 //}
 
 ISR(TWI_vect) {
-	PORTL |= (1 << PORTL3); // test
-	switch (TW_STATUS) {
-		case TW_ST_SLA_ACK:
-		case TW_ST_DATA_ACK:
-			if (data_index < sizeof(data)) {
-				TWDR = data[data_index++];
-			} else {
-				TWDR = 0x00;
-			}
-			TWCR = (1 << TWINT) | (1 << TWEA) | (1 << TWEN) | (TWIE);
-			break;
-		case TW_SR_STOP:
-			data_index = 0;
-			TWCR = (1 << TWINT) | (1 << TWEA) | (1 << TWEN) | (TWIE);
-			break;
-		case TW_ST_DATA_NACK:
-		case TW_BUS_ERROR:
-			TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWSTO) | (1 << TWEA | (TWIE));
-			break;
+	switch(TWSR)
+	{
+		case 0x80:
+		// received data from master, call the receive callback
+		junk = TWDR;
+		TWCR = (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
+		break;
+		case 0xA8:
+		// master is requesting data, call the request callback
+		TWDR = map_data[0];
+		data_index = 1;
+		TWCR = (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
+		break;
+		case 0xB8:
+		// master is requesting data, call the request callback
+		TWDR = map_data[data_index];
+		data_index++;
+		TWCR = (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
+		break;
+		case 0x00:
+		// some sort of erroneous state, prepare TWI to be readdressed
+		TWCR = 0;
+		TWCR = (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
+		break;
 		default:
-			TWCR |= (1 << TWINT) | (1 << TWEA);
+		TWCR = (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
+		break;
 	}
-	//switch (data_index) {
-		//case 0:
-		//TWDR = data[0]; // write map data to the Two-Wire-Data-Register
-		//TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA) | (1<<TWIE); // Initialize transmission, interrupt enabled
-		//data_index++;
-		//break;
-			//
-		//case 5:
-		//TWCR = (1<<TWINT)|(1<<TWEN)|(1<<TWSTO); //Send stop condition, no more TWI interrupt
-		//data_index = 0;
-		//break;
-		//default:
-		//TWCR = (1<<TWINT)|(1<<TWEN);
-		//break;
-	//}
 }
-
 #endif /* INTERRUPT_SERVICE_ROUTINE_H_ */
