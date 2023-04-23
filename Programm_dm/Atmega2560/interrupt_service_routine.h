@@ -8,8 +8,8 @@
 
 #define lack_of_progress_switch !(PINC & (1<<PC7))
 
-/*----------lack of progress handeling----------*/
-unsigned char lack_of_progress_flag = 0;
+/*----------lack of progress handling----------*/
+bool lack_of_progress_flag = 0;
 
 /*----------Encoder----------*/
 signed int encoder_counter;
@@ -20,7 +20,7 @@ unsigned char encoder_counter_black_tile = 0;
 unsigned char encoder_counter_wall_front = 0;
 unsigned char encoder_counter_gap_side = 0;
 unsigned char encoder_counter_victm = 0;
-unsigned char driving;
+bool driving;
 
 /*----------color sensor----------*/
 unsigned char color_clock;
@@ -123,27 +123,27 @@ ISR(TIMER2_OVF_vect) { //every 128 us
 	
 }
 
-ISR (TIMER5_COMPA_vect) {
+ISR (TIMER5_COMPA_vect) { // every 1sec
 	run_time++;
 	//PINB |= (1<<PINB7);
 }
 
-ISR(INT2_vect) {
+ISR(INT2_vect) { // echo of ultrasonic front (falling edge)
 	junk = TCNT1L;
 	ultrasonic_front = TCNT1H;
 }
 
-ISR(INT3_vect) {
+ISR(INT3_vect) { // echo of ultrasonic right (falling edge)
 	junk = TCNT1L;
 	ultrasonic_right = TCNT1H;
 }
 
-ISR(INT4_vect) {
+ISR(INT4_vect) { // echo of ultrasonic left (falling edge)
 	junk = TCNT1L;
 	ultrasonic_left = TCNT1H;
 }
 
-ISR(INT5_vect)  {
+ISR(INT5_vect)  { // encoder
 	encoder_counter++;
 	if (driving) {
 		encoder_counter_ir_contact_right++;
@@ -156,7 +156,7 @@ ISR(INT5_vect)  {
 	}
 }
 
-ISR(ADC_vect) {
+ISR(ADC_vect) { // adc
 	analogue_value[adc_channel_counter] = ADCH;
 	adc_channel_counter++;
 	if (adc_channel_counter == 12) adc_channel_counter = 0;
@@ -181,7 +181,7 @@ ISR(ADC_vect) {
 			//TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA) | (1<<TWIE); //Initialize the transmission, interrupt enable
 			//TWI_counter++;
 			//break;
-		//case 2 : //Save PEC, but we don´t need it! And then stop the transmission
+		//case 2 : //Save PEC, but we don't need it! And then stop the transmission
 			//TWCR= (1<<TWINT)|(1<<TWEN)|(1<<TWSTO); //Send stop condition, no more TWI interrupt
 			//break;
 		//default :
@@ -191,27 +191,22 @@ ISR(ADC_vect) {
 //}
 
 ISR(TWI_vect) {
-	switch(TWSR)
-	{
-		case 0x80:
-			// received data from master, call the receive callback
-			junk = TWDR;
+	switch(TWSR) {	// Two-Wire-Status-Register
+		case 0x80:	// controller is sending data
+			//junk = TWDR;
 			TWCR = (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
 			break;
-		case 0xA8:
-			// master is requesting data, call the request callback
+		case 0xA8:	// controller is requesting data
 			TWDR = display_data[0];
 			data_index = 1;
 			TWCR = (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
 			break;
-		case 0xB8:
-			// master is requesting data, call the request callback
+		case 0xB8:	// controller is requesting data
 			TWDR = display_data[data_index];
 			data_index++;
 			TWCR = (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
 			break;
-		case 0x00:
-			// some sort of erroneous state, prepare TWI to be readdressed
+		case 0x00:	// error
 			TWCR = 0;
 			TWCR = (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
 			break;

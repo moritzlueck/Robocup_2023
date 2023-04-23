@@ -888,6 +888,7 @@ void return_to_start(void) {
 	while(!lack_of_progress_flag) {
 		align_ir();
 		detect_wall();
+		set_display_data();
 		if ((black_tile || (driving_failed && turn_direction == 3)) && !lack_of_progress_flag) {
 			if (!(wall_rel & wr) && !check_known_black_tile(1)) turn_direction = 1;
 			else if (!(wall_rel & wb) && !check_known_black_tile(2)) turn_direction = 2;
@@ -1498,22 +1499,20 @@ void reset_run_time(void) {
 }
 
 void set_display_data(unsigned char mode) { //mode = 0: Normal operation	|	mode = 1: Black tile detected
-	if (display_enable) {
-		if (display_status) {
-			if (mode) {
-				display_data[0] = map[get_next_position_x(0)][get_next_position_y(0)][area];
-				display_data[1] = get_next_position_x(0) | ((direction % 4) << 6);
-				display_data[2] = get_next_position_y(0) | display_status;
-			} else {
-				display_data[0] = map[position_x][position_y][area];
-				display_data[1] = position_x | ((direction % 4) << 6);
-				display_data[2] = position_y | display_status;
-			}
+	if (display_status) {
+		if (mode) {
+			display_data[0] = map[get_next_position_x(0)][get_next_position_y(0)][area];
+			display_data[1] = get_next_position_x(0) | ((direction % 4) << 6);
+			display_data[2] = get_next_position_y(0) | display_status;
 		} else {
-			display_data[0] = color;
-			display_data[1] = greyscale_right;
-			display_data[2] = display_status;
+			display_data[0] = map[position_x][position_y][area];
+			display_data[1] = position_x | ((direction % 4) << 6);
+			display_data[2] = position_y | display_status;
 		}
+	} else {
+		display_data[0] = color;
+		display_data[1] = greyscale_right;
+		display_data[2] = display_status;
 	}
 }
 
