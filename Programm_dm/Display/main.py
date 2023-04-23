@@ -1,17 +1,20 @@
 from picographics import PicoGraphics, DISPLAY_TUFTY_2040
 from pimoroni import Button
+from jpegdec import JPEG
 from machine import Pin, I2C
 import time
 import ustruct
+import os
+
+display = PicoGraphics(display=DISPLAY_TUFTY_2040)
+display.set_backlight(1)
+
+j = JPEG(display)
 
 i2c = I2C(0, scl = Pin(5), sda = Pin(4), freq = 100000)
 
 i2c_adress = 0x20
-data_size = 5
-data = [0,0,0,0,0]
-
-display = PicoGraphics(display=DISPLAY_TUFTY_2040)
-display.set_backlight(0.5)
+data_size = 3
 
 button_a = Button(7, invert=False)
 button_b = Button(8, invert=False)
@@ -27,6 +30,7 @@ wall_color = display.create_pen(255, 255, 255)
 background_color = display.create_pen(0, 0, 0)
 black_tile_color = display.create_pen(0, 0, 0)
 robot_color = display.create_pen(255,140,0)
+text_color = display.create_pen(255, 255, 255)
 
 arrow_up = [(0, 9), (9, 0), (10, 0), (19, 9), (12, 9), (12, 19), (7, 19), (7, 9)]
 arrow_right = [(10, 0), (19, 9), (19, 10), (10, 19), (10, 12), (0, 12), (0, 7), (10, 7)]
@@ -43,76 +47,99 @@ black_tile_mask = 0b00100000
 checkpoint_mask = 0b01000000
 visited_mask = 0b10000000
 
+calibration_mask = 0b00000000
+run_mask = 0b01000000
+lop_mask = 0b10000000
+end_mask = 0b11000000
+status_mask = 0b11000000
+direction_mask = 0b11000000
+position_mask = 0b00111111
+
+display_width, display_hight = display.get_bounds()
+
 start_position = 12
 tile_size = 26
 tile_count = 9
 wall_thickness = 2
 frame_thickness = 2
 gap_to_wall = 2
-text_size = 3
+text_size = 8
 
-run_started = 1
+status = "calibration"
+button_control = False
 
 map = [[0] * start_position * 2 for i in range(start_position * 2)]
-data = [0, 11, 13, 0, 0, 0, 0, 0, 0, 0]
-direction = data[0]
-position_x = data[1]
-position_y = data[2]
-map_value = data[3]
-wall_relative = data[4]
+data = [0,0,0]
+direction = 0
+position_x = 12
+position_y = 12
+map_value = 0
 
-#temp
-#map[12][12] = 70
-#map[12][13] = 26
-#map[12][14] = 3
-#map[11][12] = 20
-#map[11][13] = 11
-#map[11][14] = 5
-#map[10][12] = 12
-#map[10][13] = 74
-#map[10][14] = 25
+color = 255
 
 def get_values():
     global data
-    #print("I2C Connection failed")
-    i2c_data = i2c.readfrom(0x20, 5)
-    data = get_data(i2c_data)
-    print(data)
+    global direction
     global position_x
     global position_y
-    run_started = check_run_start
-    direction = data[0]
-    position_x = data[1]
-    position_y = data[2]
-    map[position_x][position_y] = data[3]
-    wall_relative = data[4]
-    print(position_x)
-    if (button_up.is_pressed):
-        position_y += 1
-        time.sleep(0.1)
-    if (button_down.is_pressed):
-            position_y -= 1
-        time.sleep(0.1)
-    if (button_b.is_pressed):
-        position_x += 1
-        time.sleep(0.1)
-    if (button_a.is_pressed):
-        position_x -= 1
-        time.sleep(0.1)
-    if (button_c.is_pressed):
-        position_x = data[1]
-        position_y = data[2]
+    global map
+    global color
+    global status
+    global button_control
     
-def get_data(i2c_data):
-    i2c_data = str(i2c_data)
-    i2c_data = i2c_data.split("'")
-    i2c_data = i2c_data[1].split("\\")
-    counter = 0
-    for dataaaaaaa in i2c_data:
-        i2c_data[counter] = int("0"+dataaaaaaa, 0)
-        counter += 1
-    i2c_data.remove(0)    
-    return i2c_data
+    if status == "run":
+        time.sleep(0.3)
+    
+    #get data from mega
+    try:
+        i2c_data = i2c.readfrom(i2c_adress, data_size)
+         #convert data formt hex to dec
+        data = get_decimal_list(i2c_data)
+        #print(data)
+    
+        #check status of robot
+        status = check_status()
+        #print(status)
+    except:
+        print("connection failed")
+        status = "connection failed"
+    
+    if status == "calibration":
+        color = data[0]
+        
+    elif status == "run" or status == "lop" or status == "end":
+        #move robot by button press
+        if (button_up.is_pressed):
+            button_control = True
+            position_y += 1
+            time.sleep(0.1)
+        if (button_down.is_pressed):
+            button_control = True
+            position_y -= 1
+            time.sleep(0.1)
+        if (button_b.is_pressed):
+            button_control = True
+            position_x += 1
+            time.sleep(0.1)
+        if (button_a.is_pressed):
+            button_control = True
+            position_x -= 1
+            time.sleep(0.1)
+        if (button_c.is_pressed):
+            button_control = False
+            
+        if button_control == False:
+            position_x = (data[1] & position_mask)
+            position_y = (data[2] & position_mask)
+            direction = ((data[1] & direction_mask) >> 6)
+            map[position_x][position_y] = data[0]
+    
+def get_decimal_list(hex_list):
+    decimal_list = []
+    for hex_value in hex_list:
+        decimal_value = int(hex_value)
+        decimal_list.append(decimal_value)
+    return decimal_list
     
 def draw_tile(position_x_input, position_y_input, value_input):   
     tile_start_x = frame_thickness + position_x_input * tile_size
@@ -141,34 +168,41 @@ def draw_tile(position_x_input, position_y_input, value_input):
     display.set_pen(black_tile_color)
     if (value_input & black_tile_mask):
         display.rectangle(tile_start_x + wall_thickness + gap_to_wall, tile_start_y + wall_thickness + gap_to_wall, tile_size - wall_thickness * 2 - gap_to_wall * 2, tile_size - wall_thickness * 2 - gap_to_wall * 2)
+        display.set_pen(wall_color)
+        display.line(tile_start_x + wall_thickness + gap_to_wall, tile_start_y + wall_thickness + gap_to_wall, tile_start_x + tile_size - wall_thickness - gap_to_wall, tile_start_y + tile_size - wall_thickness - gap_to_wall, 2)
+        display.line(tile_start_x + wall_thickness + gap_to_wall, tile_start_y + tile_size - wall_thickness - gap_to_wall, tile_start_x + tile_size - wall_thickness - gap_to_wall, tile_start_y + wall_thickness + gap_to_wall, 2)
 
     display.set_pen(checkpoint_color)
     if (value_input & checkpoint_mask):
         display.rectangle(tile_start_x + wall_thickness + gap_to_wall, tile_start_y + wall_thickness + gap_to_wall, tile_size - wall_thickness * 2 - gap_to_wall * 2, tile_size - wall_thickness * 2 - gap_to_wall * 2)
 
-def draw_values(run):
-    if run == True:
+def draw_values():
+    if status == "calibration":
+        display.set_pen(text_color)
+        display.text(str(color), 0, 0, 320, 20)
+        
+    elif status == "run" or status == "lop" or status == "end":
         start_x = 238
         start_y = 0
+        
+        position_displayed_x = position_x - 12
+        position_displayed_y = position_y - 12
+        
         display.set_pen(wall_color)
         if (direction == 0):
-           display.polygon(get_rel_cords(scale(arrow_up, 3), start_x + 10, 0))
+           display.polygon(get_rel_cords(scale(arrow_up, 3), start_x + 10, 10))
         elif (direction == 1):
-           display.polygon(get_rel_cords(scale(arrow_right, 3), start_x + 10, 0))
+           display.polygon(get_rel_cords(scale(arrow_left, 3), start_x + 10, 10))
         elif (direction == 2):
-           display.polygon(get_rel_cords(scale(arrow_down, 3), start_x + 10, 0))
+           display.polygon(get_rel_cords(scale(arrow_down, 3), start_x + 10, 10))
         elif (direction == 3):
-           display.polygon(get_rel_cords(scale(arrow_left, 3), start_x + 10, 0))
+           display.polygon(get_rel_cords(scale(arrow_right, 3), start_x + 10, 10))
         
         #display.set_font('bitmap6')
         #display.text(str(direction), 319, 0, 320, text_size)
-        display.text(str(position_x), 238, 20, 320, text_size)
-        display.text(str(position_y), 238, 40, 320, text_size)
+        display.text(str(position_displayed_x), int(start_x + ((display_width - start_x) / 2) - (display.measure_text(str(position_displayed_x), text_size) / 2)), 80, scale = text_size)
+        display.text(str(position_displayed_y), int(start_x + ((display_width - start_x) / 2) - (display.measure_text(str(position_displayed_y), text_size) / 2)), 140, scale = text_size)
         #display.text(str(map_value), 238, 60, 320, text_size)
-        #display.text(str(wall_relative), 260, 80, 320, text_size)
-    else:
-        display.set_pen(robot_color)
-        display.rectangle(110, 70, 100, 100)
     
 def draw_robot():
     display.set_pen(robot_color)
@@ -184,11 +218,6 @@ def draw_robot():
         display.polygon(get_rel_cords(arrow_left, int(frame_thickness + wall_thickness + tile_size * ((tile_count - 1) / 2) + 1), int(frame_thickness + wall_thickness + tile_size * ((tile_count - 1) / 2) + 1)));
     
 def draw_map():
-    display.set_pen(background_color)
-    display.clear()
-    
-    draw_values(run = True)
-    
     display.set_pen(wall_color)
     display.rectangle(0, 0, tile_size * tile_count + frame_thickness * 2, tile_size * tile_count + frame_thickness * 2)
     display.set_pen(background_color)
@@ -201,13 +230,19 @@ def draw_map():
     
     draw_robot()
     
-def check_run_start():
-    if run_started:
-        return True
-    for val in data:
-        if val != 255:
-            return False
-    return True
+def clear_display():
+    display.set_pen(background_color)
+    display.clear()
+    
+def check_status():
+    if (data[2] & status_mask) == calibration_mask:
+        return "calibration"
+    elif (data[2] & status_mask) == run_mask:
+        return "run"
+    elif (data[2] & status_mask) == lop_mask:
+        return "lop"
+    elif (data[2] & status_mask) == end_mask:
+        return "end"
 
 def get_rel_cords (list_input, value_x_input, value_y_input):
     return [(i[0] + value_x_input, i[1] + value_y_input) for i in list_input]
@@ -218,9 +253,43 @@ def scale (list_input, value_input):
 def mirror (list_input):
     return [(19 - i[0], 19 - i[1]) for i in list_input]
 
-while True:
-    get_values()
-    if (run_started):
-        draw_map()
+def play_video ():
+    counter = 0
+    os.chdir("/frames")
+    while button_c.is_pressed:
+        print("hier gibt es nichts zu sehen")
+    while not button_c.is_pressed:
+        filename = f'frame{counter}.jpg'
+        try:
+            j.open_file(filename)
+            j.decode(dither=True)
+        except:
+            print("failed to open file: " + filename)
+        display.update()
+        counter += 1
+        if (counter > 61):
+            counter = 0
+
+def draw_image(file_name):
+    os.chdir("/frames")
+    j.open_file(file_name)
+    j.decode()
     display.update()
 
+###################################################################################################
+#-----------------------------------------MAIN PROGRAM--------------------------------------------#
+###################################################################################################
+    
+draw_image("frame0.jpg")
+time.sleep(1)
+
+if button_c.is_pressed:
+    play_video()
+
+while True:
+    get_values()
+    clear_display()
+    if status == "run" or status == "lop" or status == "end":
+        draw_map()
+    draw_values()
+    display.update()
