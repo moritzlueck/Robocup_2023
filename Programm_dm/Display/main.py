@@ -6,6 +6,8 @@ import time
 import ustruct
 import os
 
+rtc = machine.RTC()
+
 display = PicoGraphics(display=DISPLAY_TUFTY_2040)
 display.set_backlight(1)
 
@@ -133,6 +135,10 @@ def get_values():
             position_y = (data[2] & position_mask)
             direction = ((data[1] & direction_mask) >> 6)
             map[position_x][position_y] = data[0]
+        
+        if button_boot.is_pressed:
+            log_data()
+            time.sleep(0.1)
     
 def get_decimal_list(hex_list):
     decimal_list = []
@@ -275,6 +281,38 @@ def draw_image(file_name):
     j.open_file(file_name)
     j.decode()
     display.update()
+    
+def log_data():
+    run_number = get_run_number()
+    if run_number < 0:
+        file_name = "test_run_" + str(abs(run_number))
+    else:
+        file_name = "run_" + str(run_number)
+    os.chdir("/log")
+    file = open(file_name +".log", "w+")
+    for i, row in enumerate(map):
+        for z, value in enumerate(row):
+            x = i
+            y = z
+            if map[x][y]:
+                file.write(f"{x}|{y}|{map[x][y]}\n")
+    file.close()
+
+def get_run_number():
+    run_number = 0
+    while not button_c.is_pressed:
+        clear_display()
+        display.set_pen(text_color)
+        display.text("Run Number: " + str(run_number) if run_number <= 10 else "Nenene, so viele Läufe hat es sicher nicht gegeben, wenn das ein Testlauf ist, dann geh gefälligst unter 0", 0, 0, 300, scale = 4)
+        if button_up.is_pressed:
+            run_number += 1
+            time.sleep(0.1)
+        if button_down.is_pressed:
+            run_number -= 1
+            time.sleep(0.1)
+        display.update()
+    time.sleep(0.1)
+    return run_number
 
 ###################################################################################################
 #-----------------------------------------MAIN PROGRAM--------------------------------------------#
@@ -293,3 +331,5 @@ while True:
         draw_map()
     draw_values()
     display.update()
+
+

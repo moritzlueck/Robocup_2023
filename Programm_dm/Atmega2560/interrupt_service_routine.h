@@ -50,7 +50,7 @@ unsigned char t2ck_i2c;
 unsigned char delay;
 
 extern unsigned char data[10];
-unsigned char display_data[3] = {0, 12, 12};
+unsigned char display_data[3] = {0, 16, 16};
 
 /*----------I2C----------*/
 unsigned char i2c_counter = 0;
@@ -125,7 +125,7 @@ ISR(TIMER2_OVF_vect) { //every 128 us
 
 ISR (TIMER5_COMPA_vect) { // every 1sec
 	run_time++;
-	//PINB |= (1<<PINB7);
+	PINB |= (1<<PINB7);
 }
 
 ISR(INT2_vect) { // echo of ultrasonic front (falling edge)

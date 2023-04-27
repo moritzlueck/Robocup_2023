@@ -92,7 +92,8 @@
 #define color_checkpoint_threshold_default 70
 #define color_victm_range 6
 
-#define greyscale_black_threshold 80
+#define greyscale_black_threshold_default 80
+#define greyscale_black_range 25
 
 /*----------servo values----------*/
 #define servo_home_pulse 500
@@ -100,7 +101,7 @@
 #define servo_signal_length 20
 
 /*----------mapping values----------*/
-#define start_position 12
+#define start_position 16
 #define area_amount 4
 #define exit_radius 1
 
@@ -200,6 +201,11 @@ unsigned char color_victm_low = color_victm_low_default;
 unsigned char color_checkpoint = 0;
 unsigned char color_checkpoint_threshold = color_checkpoint_threshold_default;
 unsigned char color_white = 0;
+
+unsigned char greyscale_black_right = 0;
+unsigned char greyscale_black_left = 0;
+unsigned char greyscale_black_threshold_right = greyscale_black_threshold_default;
+unsigned char greyscale_black_threshold_left = greyscale_black_threshold_default;
 
 /*----------data visualizer numbers----------*/
 unsigned char data[10];
@@ -383,8 +389,8 @@ int main(void) {
 	if (calibration_button) calibrate();
 	
 	while (lack_of_progress_switch) {
-		data[0] = display_status;//color_victm;//ir_front_right;
-		data[1] = color_victm_high;//ir_front_left;
+		data[0] = map[32][0][0];//display_status;//color_victm;//ir_front_right;
+		data[1] = map[255][0][0];//color_victm_high;//ir_front_left;
 		data[2] = color_victm_low;//ir_right_front;
 		data[3] = color_white;//ir_right_back;
 		data[4] = color_checkpoint;//ir_back_right;
@@ -423,7 +429,7 @@ int main(void) {
 		if(color > color_checkpoint_threshold) {
 			led_green_on;
 		} else led_green_off;
-		if(greyscale_right < greyscale_black_threshold && greyscale_left < greyscale_black_threshold) {
+		if(greyscale_right < greyscale_black_threshold_right && greyscale_left < greyscale_black_threshold_left) {
 			led_blue_on;
 		} else led_blue_off;
 		
@@ -492,7 +498,7 @@ int main(void) {
 		 }
 		 align_ir(0xff);
 		 detect_wall_quick(0);
-		 if (checkpoint && wall_quick_abs == (map[start_position][start_position][0] & wall_map) && victm_counter /*rescue_counter >= 5 && checkpoint_counter > 2*/ && start_tile_recovery && !lack_of_progress_flag) {
+		 if (checkpoint && wall_quick_abs == (map[start_position][start_position][0] & wall_map) && victm_counter >= 3 && checkpoint_counter > 2 && start_tile_recovery && !lack_of_progress_flag) {
 			 recover_start_tile_counter++;
 			 recover_start_error = 0;
 			 direction_est = 0;
@@ -552,7 +558,7 @@ void drive(void) {
 			eject_while_driving = 0;
 		}
 		
-		if (greyscale_right < greyscale_black_threshold || greyscale_left < greyscale_black_threshold || (detect_obstacles && !(wall_quick_rel & wr) && !(wall_quick_rel & wl) && ir_front_middle_right > ir_wall_threshold && ir_front_middle_left > ir_wall_threshold && ultrasonic_front < ultrasonic_wall_theshold_front && ir_front_right < ir_wall_threshold && ir_front_left < ir_wall_threshold)) {
+		if (greyscale_right < greyscale_black_threshold_right || greyscale_left < greyscale_black_threshold_left || (detect_obstacles && !(wall_quick_rel & wr) && !(wall_quick_rel & wl) && ir_front_middle_right > ir_wall_threshold && ir_front_middle_left > ir_wall_threshold && ultrasonic_front < ultrasonic_wall_theshold_front && ir_front_right < ir_wall_threshold && ir_front_left < ir_wall_threshold)) {
 			if (encoder_counter_black_tile > encoder_drive_after_black_detected && !lack_of_progress_flag) {
 				led_blue_on;
 				stop();
@@ -1475,7 +1481,7 @@ bool check_known_victm(void) {
 bool check_known_black_tile(unsigned char direction_input) {
 	position_x_next = get_next_position_x(direction_input);
 	position_y_next = get_next_position_y(direction_input);
-	if((map[position_x_next][position_y_next][area] & black_tile_map) && (position_x_next != start_position || position_y_next != start_position)) {
+	if((map[position_x_next][position_y_next][area] & black_tile_map) && (position_x_next != start_position || position_y_next != start_position) && position_x_next < (start_position * 2) && position_y_next < (start_position * 2)) {
 		led_blue_on;
 		return 1;
 	} else return 0;
@@ -1511,7 +1517,7 @@ void set_display_data(unsigned char mode) { //mode = 0: Normal operation	|	mode 
 		}
 	} else {
 		display_data[0] = color;
-		display_data[1] = greyscale_right;
+		display_data[1] = (greyscale_right + greyscale_left) / 2;
 		display_data[2] = display_status;
 	}
 }
@@ -1525,6 +1531,14 @@ void calibrate(void) {
 	_delay_ms(50); //debounce
 	color_victm = color;
 	led_red_off;
+	while (calibration_button) set_display_data();
+	_delay_ms(50); // debounce
+	led_blue_on;
+	while (!(calibration_button)) set_display_data();
+	_delay_ms(50); //debounce
+	greyscale_black_right = greyscale_right;
+	greyscale_black_left = greyscale_left;
+	led_blue_off;
 	while (calibration_button) set_display_data();
 	_delay_ms(50); // debounce
 	led_white_on;
@@ -1544,5 +1558,7 @@ void calibrate(void) {
 	color_victm_high = color_victm + color_victm_range;
 	color_victm_low = color_victm - color_victm_range;	
 	color_checkpoint_threshold = color_white + ((color_checkpoint - color_white) / 2); //middle between white and checkpoint
+	greyscale_black_threshold_right = greyscale_black_right + greyscale_black_range;
+	greyscale_black_threshold_left = greyscale_black_left + greyscale_black_range;
 	led_array_off;
 }
