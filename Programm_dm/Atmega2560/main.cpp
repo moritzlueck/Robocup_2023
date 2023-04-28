@@ -26,6 +26,9 @@
 #define turning_failed_detection 1
 #define clear_black_tile_after_ramp 1
 
+#define known_black_tile_detection 1
+#define known_victm_detection 1
+
 #define display_enable 1
 
 #define deleay_between_movement if(1) _delay_ms(100)
@@ -66,7 +69,7 @@
 #define velocity_drive 210
 #define velocity_drive_ir_slow 180
 #define velocity_turn 220
-#define velocity_power_turn 240
+#define velocity_power_turn 254
 
 #define velocity_align_turn 130
 #define velocity_align_drive 130
@@ -86,13 +89,13 @@
 #define ultrasonic_wall_drive 25	//note that the value is used in combination with a < operator
 
 /*----------color sensor related values----------*/
-#define color_victm_default 14
-#define color_victm_high_default 20
-#define color_victm_low_default 10
+#define color_victm_default 10
+#define color_victm_high_default 16
+#define color_victm_low_default 4
 #define color_checkpoint_threshold_default 70
 #define color_victm_range 6
 
-#define greyscale_black_threshold_default 80
+#define greyscale_black_threshold_default 100
 #define greyscale_black_range 25
 
 /*----------servo values----------*/
@@ -240,7 +243,8 @@ unsigned char ramp = 0;
 /*----------error variables----------*/
 bool driving_failed = 0;
 bool driving_angle_detection_failed = 0;
-bool turning_failed = 0;
+unsigned char turning_failed = 0;
+bool align_ir_side_disable_run = 0;
 bool lack_of_progress = 0;
 bool recover_start_error = 0;
 unsigned char lop_during_return_to_start_counter = 0;
@@ -380,8 +384,9 @@ int main(void) {
 	led_green_off;
 		
 	while(0) {
-		set_display_data();
-		led_green_on;
+		forward(210, 210);
+		//set_display_data();
+		//led_green_on;
 		//turn(1,0);
 		//_delay_ms(3000);
 	} 
@@ -463,7 +468,7 @@ int main(void) {
 			 else if (!(wall_rel & wb) && !check_known_black_tile(2)) turn_direction = 2;
 		 }
 		set_data();
-		 if (victm_flag && !(map[position_x][position_y][area] & victm_map) && !checkpoint && !lack_of_progress_flag) {
+		 if (victm_flag && (!(map[position_x][position_y][area] & victm_map) || !known_victm_detection) && !checkpoint && !lack_of_progress_flag) {
 			victm_identified = 1;
 			blink_rescue();
 			victm_flag = 0;
@@ -523,7 +528,7 @@ int main(void) {
 }
 
 void set_data(void) {
-	data[0] = check_known_black_tile(1);
+	data[0] = turning_failed;
 	data[1] = wall;
 	data[2] = 0;
 	data[3] = map_path[12][13][0];
@@ -533,6 +538,7 @@ void set_data(void) {
 	data[7] = map_path[13][11][0];
 	data[8] = map_path[14][11][0];
 	data[9] = path_value_counter;
+	set_display_data();
 }
 
 void drive(void) {
@@ -854,7 +860,7 @@ void turn(unsigned char mode, unsigned char power_turn) {
 			if (wall != wall_before_turn) {
 				for (unsigned char i = 0; i < 4; i++) {
 					if (calculate_absolute_wall(i, wall_rel) == wall_before_turn) {
-						if (direction != i) turning_failed = 1;
+						if ((direction % 4) != i) turning_failed++;
 						direction = i;
 						detect_wall();
 						break;
@@ -1118,7 +1124,7 @@ void handle_map(void) {
 		map[position_x][position_y][area] |= checkpoint_map;
 		last_checkpoint_position_x = position_x;
 		last_checkpoint_position_y = position_y;
-		last_checkpoint_direction = direction;
+		last_checkpoint_direction = (direction % 4);
 		last_checkpoint_area = area;
 		last_checkpoint_area_counter = area_counter;
 		led_white_on;
@@ -1138,6 +1144,7 @@ void recover_map(void) {
 		for (unsigned char i = 0; i < 4; i++) {
 			if (calculate_absolute_wall(i, wall_rel) == (map[position_x][position_y][area] & wall_map)) {
 				direction = i;
+				detect_wall();
 				break;
 			}
 		}
@@ -1181,7 +1188,7 @@ void align_ir (unsigned char mode) {
 		}
 	}
 	stop();
-	if (mode & 0b00000010 && align_side && !angle_up && !angle_down && !lack_of_progress_flag) {
+	if (mode & 0b00000010 && turning_failed < 2 && align_side && !angle_up && !angle_down && !lack_of_progress_flag) {
 		unsigned char c = 0;
 		if (wall_quick_rel & wr) {
 			if (ir_right_front > ir_wall_too_close && ir_right_back > ir_wall_too_close) {
@@ -1309,7 +1316,7 @@ void detect_wall(void) {
 		wall_rel = 0;
 		if (ir_front_right > ir_wall_threshold && ir_front_left > ir_wall_threshold && ultrasonic_front < ultrasonic_wall_theshold_front) wall_rel |= wf;
 		if (ir_right_front > ir_wall_threshold && ir_right_back > ir_wall_threshold && ultrasonic_right < ultrasonic_wall_threshold_side) wall_rel |= wr;
-		if (ir_back_right > ir_wall_threshold && ir_back_left > ir_wall_threshold && !(map[position_x + dx[direction]][position_y + dy[direction]][area] & checkpoint_map)) wall_rel |= wb;
+		if (ir_back_right > ir_wall_threshold && ir_back_left > ir_wall_threshold && !(map[position_x + dx[(direction % 4)]][position_y + dy[(direction % 4)]][area] & checkpoint_map)) wall_rel |= wb;
 		if (ir_left_front > ir_wall_threshold && ir_left_back > ir_wall_threshold && ultrasonic_left < ultrasonic_wall_threshold_side) wall_rel |= wl;
 	}
 	wall = calculate_absolute_wall(direction, wall_rel);
@@ -1469,6 +1476,7 @@ void add_victm(void) {
 }
 
 bool check_known_victm(void) {
+	if (!known_victm_detection) return 0;
 	if (map[position_x][position_y][area] &= victm_map) {
 		led_red_on;
 		return 1;
@@ -1479,6 +1487,7 @@ bool check_known_victm(void) {
 }
 
 bool check_known_black_tile(unsigned char direction_input) {
+	if (!known_black_tile_detection) return 0;
 	position_x_next = get_next_position_x(direction_input);
 	position_y_next = get_next_position_y(direction_input);
 	if((map[position_x_next][position_y_next][area] & black_tile_map) && (position_x_next != start_position || position_y_next != start_position) && position_x_next < (start_position * 2) && position_y_next < (start_position * 2)) {
