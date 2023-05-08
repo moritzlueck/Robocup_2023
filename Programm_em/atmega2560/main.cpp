@@ -19,6 +19,8 @@
 #define detect_obstacles 1
 #define leave_blind_end_backward 1
 
+#define brute_force_tun 1
+
 #define start_tile_checkpoint 1
 
 #define known_black_tile_avoidance 1
@@ -27,9 +29,10 @@
 /*----------encoder related values----------*/
 #define encoder_drive 320
 #define encoder_drive_half 165
-#define encoder_drive_after_ir_back 70
+#define encoder_drive_after_gap 70
 #define encoder_turn_right 195
 #define encoder_turn_left 205
+#define encoder_max_brute_force_turn 500
 
 #define encoder_align_max_drive 100
 #define encoder_align_max_turn 75
@@ -197,8 +200,8 @@ unsigned char turn_direction = 0;
 /*----------driving variables----------*/
 bool drive_direction = 0;
 
-bool stop_after_ir_side = 0;
-bool stop_after_ir_side_done = 0;
+bool stop_after_gap = 0;
+bool stop_after_gap_done = 0;
 bool eject_while_driving = 0;
 unsigned char encoder_steps_before_black = 0;
 unsigned char contact_counter_right = 0;
@@ -282,6 +285,7 @@ unsigned char data[10];
 /*----------functions----------*/
 void drive(void);
 void drive_ir(void);
+void drive_ir_backward(void);
 void turn(unsigned char mode);
 void align_ir(unsigned char mode = 0b00001011);
 void align_ir_side(unsigned char side_input, unsigned char distance_input);
@@ -295,6 +299,7 @@ void exit(void);
 
 void detect_wall(void);
 void detect_checkpoint(void);
+void detect_victm (void);
 unsigned char calculate_absolute_wall(unsigned char direction_input, unsigned char wall_input);
 
 void handle_map(void);
@@ -361,6 +366,7 @@ int main(void) {
 		align_ir();
 		detect_wall();
 		detect_checkpoint();
+		detect_victm();
 		handle_map();
 		set_data();
 		if ((black_tile || blind_end || (driving_failed && turn_direction == 1)) && !lack_of_progress_flag) {
@@ -385,7 +391,6 @@ int main(void) {
 			switch (turn_direction) {
 				case 0:
 					straight_counter++;
-					//turning_failed_counter = 0;
 					drive_direction = 0;
 					break;
 				case 1:
@@ -395,7 +400,7 @@ int main(void) {
 					drive_direction = 0;
 					break;
 				case 2:
-					if (leave_blind_end_backward && (wall_rel_prev & (wb | wl)) != wl && !ramp && !black_tile) drive_direction = 1; //wenn in Sackgasse und nach dem dem nächsten fahren sowieso Drehung nötig wäre und keine Rampe rückwärts Ausparken (aktuell noch nich nach Schwarzer Platte möglich)
+					if (leave_blind_end_backward && (wall_rel_prev & (wb | wl)) != wl && !ramp && !victm_identified && !black_tile) drive_direction = 1; //wenn in Sackgasse und nach dem dem nächsten fahren sowieso Drehung nötig wäre und keine Rampe rückwärts Ausparken (aktuell noch nich nach Schwarzer Platte möglich)
 					else {
 						turn(1);
 						align_ir();
@@ -418,6 +423,8 @@ int main(void) {
 		
 		align_ir(0xff);
 		detect_wall();
+		
+		if (!black_tile && !lack_of_progress_flag) wall_rel_prev = wall_rel;
 		
 		if (checkpoint && calculate_absolute_wall(0, wall_rel) == (map[start_position][start_position] & wall_map) && victm_counter && checkpoint_counter && start_tile_recovery && start_tile_checkpoint && !lack_of_progress_flag) {
 			recover_start_tile_counter++;
@@ -470,7 +477,7 @@ void drive(void) {
 	victm_flag = 0;
 	ramp = 0;
 	driving = 1;
-	stop_after_ir_side = 0;
+	stop_after_gap = 0;
 	contact_counter_right = 0;
 	contact_counter_left = 0;
 	wall_detected_while_driving = 0;
@@ -517,12 +524,12 @@ void drive(void) {
 				}
 			} else encoder_counter_wall_front = 0;
 			
-			if ((ir_right_front < ir_wall_threshold && ir_right_back > ir_wall_threshold && encoder_counter > encoder_gap_right_min_steps) || stop_after_ir_side) {
-				if (ir_right_front < ir_wall_threshold && ir_right_back < ir_wall_threshold && !stop_after_ir_side_done) {
-					encoder_counter = encoder_drive - encoder_drive_after_ir_back;
-					stop_after_ir_side = 0;
-					stop_after_ir_side_done = 1;
-				} else stop_after_ir_side = 1;
+			if ((ir_right_front < ir_wall_threshold && ir_right_back > ir_wall_threshold && encoder_counter > encoder_gap_right_min_steps) || stop_after_gap) {
+				if (ir_right_front < ir_wall_threshold && ir_right_back < ir_wall_threshold && !stop_after_gap_done) {
+					encoder_counter = encoder_drive - encoder_drive_after_gap;
+					stop_after_gap = 0;
+					stop_after_gap_done = 1;
+				} else stop_after_gap = 1;
 			}
 			
 			if (color < color_victm_high && color > color_victm_low && encoder_counter > encoder_drive_half && !lack_of_progress_flag) {
@@ -546,13 +553,13 @@ void drive(void) {
 									break;
 								}
 							} else encoder_counter_ramp = 0;
-							if ((ir_right_front < ir_wall_threshold && ir_right_back > ir_wall_threshold && encoder_counter > encoder_gap_right_min_steps) || stop_after_ir_side) {
+							if ((ir_right_front < ir_wall_threshold && ir_right_back > ir_wall_threshold && encoder_counter > encoder_gap_right_min_steps) || stop_after_gap) {
 								if (ir_right_front < ir_wall_threshold && ir_right_back < ir_wall_threshold) {
-									encoder_counter = encoder_drive - encoder_drive_after_ir_back;
+									encoder_counter = encoder_drive - encoder_drive_after_gap;
 									led_green_on;
-									stop_after_ir_side = 0;
+									stop_after_gap = 0;
 									break;
-								} else stop_after_ir_side = 1;
+								} else stop_after_gap = 1;
 							}
 						}
 						} else {
@@ -568,13 +575,13 @@ void drive(void) {
 									break;
 								}
 							} else encoder_counter_ramp = 0;
-							if ((ir_right_front < ir_wall_threshold && ir_right_back > ir_wall_threshold && encoder_counter > encoder_gap_right_min_steps) || stop_after_ir_side) {
+							if ((ir_right_front < ir_wall_threshold && ir_right_back > ir_wall_threshold && encoder_counter > encoder_gap_right_min_steps) || stop_after_gap) {
 								if (ir_right_front < ir_wall_threshold && ir_right_back < ir_wall_threshold) {
-									encoder_counter = encoder_drive - encoder_drive_after_ir_back;
+									encoder_counter = encoder_drive - encoder_drive_after_gap;
 									led_green_on;
-									stop_after_ir_side = 0;
+									stop_after_gap = 0;
 									break;
-								} else stop_after_ir_side = 1;
+								} else stop_after_gap = 1;
 							}
 						}
 					}
@@ -585,9 +592,12 @@ void drive(void) {
 				if (encoder_counter_ir_contact_right > encoder_drive_after_contact_ir_detected) {
 					stop();
 					encoder_counter_temp_contact = encoder_counter;
+					encoder_counter = 0;
+					while (encoder_counter < encoder_drive_after_contact && !lack_of_progress_flag) backward(velocity_align_drive, velocity_align_drive);
+					stop();
 					align_ir_side(1, 2);
 					align_ir(0b00000001);
-					encoder_counter = encoder_counter_temp_contact;
+					encoder_counter = encoder_counter_temp_contact  - encoder_drive_after_contact * 2;
 					contact_counter_right++;
 				}
 			} else encoder_counter_ir_contact_right = 0;
@@ -596,9 +606,12 @@ void drive(void) {
 				if (encoder_counter_ir_contact_left > encoder_drive_after_contact_ir_detected) {
 					stop();
 					encoder_counter_temp_contact = encoder_counter;
+					encoder_counter = 0;
+					while (encoder_counter < encoder_drive_after_contact && !lack_of_progress_flag) backward(velocity_align_drive, velocity_align_drive);
+					stop();
 					align_ir_side(0, 2);
 					align_ir(0b00000001);
-					encoder_counter = encoder_counter_temp_contact;
+					encoder_counter = encoder_counter_temp_contact  - encoder_drive_after_contact * 2;
 					contact_counter_left++;
 				}
 			} else encoder_counter_ir_contact_left = 0;
@@ -612,7 +625,7 @@ void drive(void) {
 				encoder_counter = 0;
 				while (encoder_counter < encoder_turn_after_contact && !lack_of_progress_flag) turn_left(velocity_align_turn);
 				stop();
-				encoder_counter = encoder_counter_temp_contact;
+				encoder_counter = encoder_counter_temp_contact - encoder_drive_after_contact * 2;
 				contact_counter_right++;
 			}
 		
@@ -625,7 +638,7 @@ void drive(void) {
 				encoder_counter = 0;
 				while (encoder_counter < encoder_turn_after_contact && !lack_of_progress_flag) turn_right(velocity_align_turn);
 				stop();
-				encoder_counter = encoder_counter_temp_contact;
+				encoder_counter = encoder_counter_temp_contact - encoder_drive_after_contact * 2;
 				contact_counter_left++;
 			}
 		}
@@ -698,7 +711,7 @@ void drive(void) {
 	} else {
 		
 		while (encoder_counter < encoder_drive && !lack_of_progress_flag) {
-			backward(velocity_drive, velocity_drive);
+			drive_ir_backward();
 		}
 		stop();
 		driving = 0;
@@ -724,33 +737,48 @@ void drive(void) {
 void turn(unsigned char mode) {
 	set_data();
 	encoder_counter = 0;
-	if (!mode) {
-		while (encoder_counter < encoder_turn_right && !lack_of_progress_flag) {
-			if (turning_failed_counter) turn_right(velocity_power_turn);
-			else turn_right(velocity_turn);
-			if (color < color_victm_high && color > color_victm_low) victm_flag= 1;
+	if (turning_failed_counter > 2 && brute_force_tun) {
+		if (!mode && wall_rel & (wr | wf) == wf) {
+			while (encoder_counter < encoder_max_brute_force_turn && ir_front_right > ir_wall_threshold && ir_front_middle_right > ir_wall_threshold && ir_front_middle_left > ir_wall_threshold && ir_front_left > ir_wall_threshold && !lack_of_progress_flag) turn_right(velocity_power_turn);
+			stop();
+			direction_last = direction;
+			direction += 1;
+			direction_est += 1;
+		} else if (wall_rel & (wl | wf) == wf) {
+			while (encoder_counter < encoder_max_brute_force_turn && ir_front_right > ir_wall_threshold && ir_front_middle_right > ir_wall_threshold && ir_front_middle_left > ir_wall_threshold && ir_front_left > ir_wall_threshold && !lack_of_progress_flag) turn_left(velocity_power_turn);
+			stop();
+			direction_last = direction;
+			direction += 3;
+			direction_est += 3;
 		}
-		stop();
-		direction_last = direction;
-		direction += 1;
-		direction_est += 1;
 	} else {
-		while (encoder_counter < encoder_turn_left && !lack_of_progress_flag) {
-			if (turning_failed_counter) turn_left(velocity_power_turn);
-			else turn_left(velocity_turn);
-			if (color < color_victm_high && color > color_victm_low) victm_flag= 1;
+		if (!mode) {
+			while (encoder_counter < encoder_turn_right && !lack_of_progress_flag) {
+				if (turning_failed_counter) turn_right(velocity_power_turn);
+				else turn_right(velocity_turn);
+				detect_victm();
+			}
+			stop();
+			direction_last = direction;
+			direction += 1;
+			direction_est += 1;
+		} else {
+			while (encoder_counter < encoder_turn_left && !lack_of_progress_flag) {
+				if (turning_failed_counter) turn_left(velocity_power_turn);
+				else turn_left(velocity_turn);
+				detect_victm();
+			}
+			stop();
+			direction_last = direction;
+			direction += 3;
+			direction_est += 3;
 		}
-		stop();
-		direction_last = direction;
-		direction += 3;
-		direction_est += 3;
 	}
 	direction %= 4;
 	direction_est %= 4;
 	
 	wall_before_turn = wall_abs;
 	detect_wall();
-	wall_rel_prev = wall_rel;
 	if (wall_abs != wall_before_turn && ramp != 1 && wall_abs != 0b00001010 && wall_abs != 0b00000101 && !lack_of_progress_flag) {
 		set_data();
 		led_blue_on;
@@ -793,6 +821,30 @@ void drive_ir(void) {
 			forward(velocity_drive_ir_slow, velocity_drive);
 		}
 	} else forward(velocity_drive, velocity_drive);
+}
+
+void drive_ir_backward(void) {
+	if (ir_right_front > ir_wall_threshold && ir_right_back > ir_wall_threshold && ultrasonic_right < ultrasonic_wall_threshold_side) {
+		if (ir_right_front > ir_wall_too_close && ir_right_back > ir_wall_too_close) {
+			backward(velocity_drive_ir_slow, velocity_drive);
+		} else if (ir_right_front < ir_wall_too_far && ir_right_back < ir_wall_too_far) {
+			backward(velocity_drive, velocity_drive_ir_slow);
+		} else if (ir_right_front > ir_right_back) {
+			backward(velocity_drive_ir_slow, velocity_drive);
+		} else if (ir_right_front < ir_right_back) {
+			backward(velocity_drive, velocity_drive_ir_slow);
+		}
+	} else if (ir_left_front > ir_wall_threshold && ir_left_back > ir_wall_threshold && ultrasonic_left < ultrasonic_wall_threshold_side) {
+		if (ir_left_front > ir_wall_too_close && ir_left_back > ir_wall_too_close) {
+			backward(velocity_drive, velocity_drive_ir_slow);
+		} else if (ir_right_front < ir_wall_too_far && ir_left_back < ir_wall_too_far) {
+			backward(velocity_drive_ir_slow, velocity_drive);
+		} else if (ir_left_front > ir_left_back) {
+			backward(velocity_drive, velocity_drive_ir_slow);
+		} else if (ir_left_front < ir_left_back) {
+			backward(velocity_drive_ir_slow, velocity_drive);
+		}
+	} else backward(velocity_drive, velocity_drive);
 }
 
 void align_ir(unsigned char mode /* = 0b00001011 */) {
@@ -867,7 +919,7 @@ void align_ir(unsigned char mode /* = 0b00001011 */) {
 	if (mode & 0b00000100 && !angle_up && !angle_down && !(wall_rel & (wf | wr | wl)) && !lack_of_progress_flag) {
 		if (ir_front_right > ir_wall_threshold && ir_front_left < ir_wall_threshold && ir_front_middle_right < ir_wall_threshold && ir_front_middle_left < ir_wall_threshold && ultrasonic_front > ultrasonic_wall_theshold_front && !lack_of_progress_flag) {
 			align_ir_side(1, 2);
-			} else if (ir_front_left > ir_wall_threshold && ir_front_right < ir_wall_threshold && ir_front_middle_right < ir_wall_threshold && ir_front_middle_left < ir_wall_threshold && ultrasonic_front > ultrasonic_wall_theshold_front && !lack_of_progress_flag) {
+		} else if (ir_front_left > ir_wall_threshold && ir_front_right < ir_wall_threshold && ir_front_middle_right < ir_wall_threshold && ir_front_middle_left < ir_wall_threshold && ultrasonic_front > ultrasonic_wall_theshold_front && !lack_of_progress_flag) {
 			align_ir_side(0,2);
 		}
 		if (mode & 0b00000001 && alignment_side_front_done && !lack_of_progress_flag) align_ir(0b00000001);
@@ -897,9 +949,13 @@ void align_ir(unsigned char mode /* = 0b00001011 */) {
 		encoder_counter = 0;
 		if (ir_right_front > ir_wall_threshold && ir_right_back < ir_wall_threshold && ultrasonic_right > ultrasonic_wall_threshold_side) {
 			while (ir_right_front > ir_wall_threshold && ir_right_back < ir_wall_threshold && ultrasonic_right > ultrasonic_wall_threshold_side && encoder_counter < encoder_align_max_drive && !lack_of_progress_flag) backward(velocity_align_drive, velocity_align_drive);
+			encoder_counter = 0;
+			while (encoder_counter < encoder_drive_after_gap && !lack_of_progress_flag) backward(velocity_align_drive, velocity_align_drive);
 			alignment_drive_gap_done = 1;
 		} else if (ir_right_front < ir_wall_threshold && ir_right_back > ir_wall_threshold && ultrasonic_right > ultrasonic_wall_threshold_side) {
 			while (ir_right_front < ir_wall_threshold && ir_right_back > ir_wall_threshold && ultrasonic_right > ultrasonic_wall_threshold_side && encoder_counter < encoder_align_max_drive && !lack_of_progress_flag) forward(velocity_align_drive, velocity_align_drive);
+			encoder_counter = 0;
+			while (encoder_counter < encoder_drive_after_gap && !lack_of_progress_flag) forward(velocity_align_drive, velocity_align_drive);
 			alignment_drive_gap_done = 1;
 		}
 		if (mode & 0b00000001 && alignment_drive_gap_done && !lack_of_progress_flag) align_ir(0b00000001);
@@ -921,7 +977,7 @@ void return_to_start(void) {
 			turn(0);
 		}
 		else if (!(wall_rel & wl) && !check_known_black_tile(3)) turn(1);
-		} else if (!lack_of_progress_flag) {
+	} else if (!lack_of_progress_flag) {
 		turn(0);
 		align_ir();
 		turn(0);
@@ -935,11 +991,11 @@ void return_to_start(void) {
 		detect_wall();
 		detect_checkpoint();
 		set_data();
-		if ((black_tile || (driving_failed && turn_direction == 3)) && !lack_of_progress_flag) {
+		if ((black_tile || blind_end || (driving_failed && turn_direction == 3)) && !lack_of_progress_flag) {
 			if (!(wall_rel & wr) && !check_known_black_tile(1)) turn_direction = 1;
 			else if (!(wall_rel & wb) && !check_known_black_tile(2)) turn_direction = 2;
 			else if (!(wall_rel & wl) && !check_known_black_tile(3)) turn_direction = 3;
-			} else if (!lack_of_progress_flag) {
+		} else if (!lack_of_progress_flag) {
 			if (!(wall_rel & wl) && !check_known_black_tile(3)) turn_direction = 3;
 			else if (!(wall_rel & wf) && !check_known_black_tile(0)) turn_direction = 0;
 			else if (!(wall_rel & wr) && !check_known_black_tile(1)) turn_direction = 1;
@@ -951,7 +1007,6 @@ void return_to_start(void) {
 			switch (turn_direction) {
 				case 0:
 					straight_counter++;
-					//turning_failed_counter = 0;
 					drive_direction = 0;
 					break;
 				case 1:
@@ -1012,6 +1067,8 @@ void handle_map(void) {
 		drive_direction = 0;
 		turn_direction = 0;
 		display_status = display_status_run;
+		blind_end = 0;
+		drive_direction = 0;
 		drive();
 		align_ir();
 		detect_wall();
@@ -1125,6 +1182,10 @@ void detect_wall(void) {
 void detect_checkpoint(void) {
 	if (color > color_checkpoint_threshold) checkpoint = 1;
 	else checkpoint = 0;
+}
+
+void detect_victm(void) {
+	if (color < color_victm_high && color > color_victm_low && !lack_of_progress_flag) victm_identified = 1;
 }
 
 unsigned char calculate_absolute_wall(unsigned char direction_input, unsigned char wall_input) {
