@@ -42,10 +42,10 @@ void init() {
 	TIMSK4 = 0b00000000;
 	
 	// Timer 5 is used for keeping track of the runtime
-	TCCR5A = 0b00000000;
-	TCCR5B = 0b00001101;	//timer reset if value reached OCR5A, prescaler 1:1024
-	TIMSK5 = 0b00000010;	//OCR5B and OCR5A Interrupt
-	OCR5A  = 15625;			//every 1s
+	//TCCR5A = 0b00000000;
+	//TCCR5B = 0b00001101;	//timer reset if value reached OCR5A, prescaler 1:1024
+	//TIMSK5 = 0b00000010;	//OCR5B and OCR5A Interrupt
+	//OCR5A  = 15625;			//every 1s
 	//OCR5B  = 7815;			//every ~0.5s 
 	
 	/*---------external interrupt configuration----------*/

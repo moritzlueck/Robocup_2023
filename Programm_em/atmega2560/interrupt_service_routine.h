@@ -60,6 +60,9 @@ unsigned char k = 0;
 unsigned char TWI_counter = 0;
 unsigned char data_index = 0;
 
+bool gyro_data_set = 0;
+unsigned char gyro_data = 0;
+
 /*----------time----------*/
 unsigned int run_time = 0;
 
@@ -90,17 +93,6 @@ ISR(TIMER2_OVF_vect) { //every 128 us
 		TCNT0 = 0;
 	}
 	
-	//i2c_counter++; //Counter of Timer2 interrupts
-	//if (i2c_counter == 80) { //~10ms, 128us * 80 = 10240us
-		//i2c_counter = 0; //Reset
-		//k++; //Counter of data to be transmit to LCD
-		//if (k == 8) k = 0; //8 datas
-		//TWI_counter = 0; //Number of TWI interrupts
-		//i2c_Start(); //Send start condition to TWI bus
-		//TWDR = (0x20 << 1); //Address and write(0)
-		//TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWIE); //Initialize the transmission, enable TWI-Interrupt
-	//}
-	
 	usart_clock++;
 	if (usart_clock & 0b00000001) { //Every 256us,
 		Counter_Transmission++; //Four digits will be transmitted
@@ -117,16 +109,12 @@ ISR(TIMER2_OVF_vect) { //every 128 us
 		if (Counter_Transmission == 3) USART_Transmit('\t'); //At last write a tabulator
 		else USART_Transmit(Trans_data[Counter_Transmission]); //One digit after another
 	}
-	//if (!usart_clock) {
-		//PINB |= (1<<PINB7);
-	//}
-	
 }
 
-ISR (TIMER5_COMPA_vect) { // every 1sec
-	run_time++;
-	PINB |= (1<<PINB7);
-}
+//ISR (TIMER5_COMPA_vect) { // every 1sec
+	//run_time++;
+	//PINB |= (1<<PINB7);
+//}
 
 ISR(INT2_vect) { // echo of ultrasonic front (falling edge)
 	junk = TCNT1L;
@@ -193,7 +181,8 @@ ISR(ADC_vect) { // adc
 ISR(TWI_vect) {
 	switch(TWSR) {	// Two-Wire-Status-Register
 		case 0x80:	// controller is sending data
-			//junk = TWDR;
+			gyro_data = TWDR;
+			gyro_data_set = 1;
 			TWCR = (1<<TWIE) | (1<<TWINT) | (1<<TWEA) | (1<<TWEN);
 			break;
 		case 0xA8:	// controller is requesting data
