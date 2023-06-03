@@ -19,7 +19,7 @@ unsigned char encoder_counter_ramp;
 unsigned char encoder_counter_black_tile = 0;
 unsigned char encoder_counter_wall_front = 0;
 unsigned char encoder_counter_gap_side = 0;
-unsigned char encoder_counter_victm = 0;
+unsigned char encoder_counter_victim = 0;
 bool driving;
 
 /*----------color sensor----------*/
@@ -140,7 +140,7 @@ ISR(INT5_vect)  { // encoder
 		encoder_counter_black_tile++;
 		encoder_counter_wall_front++;
 		encoder_counter_gap_side++;
-		encoder_counter_victm++;
+		encoder_counter_victim++;
 	}
 }
 

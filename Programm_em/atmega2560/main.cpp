@@ -1,4 +1,4 @@
- #define F_CPU 16000000UL
+#define F_CPU 16000000UL
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
@@ -14,22 +14,55 @@
 #define MYUBRR			FOSC/16/BAUD-1
 
 /*----------activations----------*/
-#define start_tile_recovery 1
+bool start_tile_recovery = 1;
+#define detect_return_to_start_abort 1
+#define return_to_start_abort_threhold 2
+
 #define align_side 1
 #define detect_obstacles 1
 #define leave_blind_end_backward 1
 
 #define brute_force_tun 1
 
-#define start_tile_checkpoint 1
+#define start_tile_checkpoint 0
 
 #define known_black_tile_avoidance 1
-#define ignore_known_victms 1
+#define ignore_known_victims 1
 
 /*----------encoder related values----------*/
-#define encoder_drive 320
-#define encoder_drive_half 165
-#define encoder_drive_after_gap 70
+//33cm bahn
+//#define encoder_drive 320
+//#define encoder_drive_half 165
+//#define encoder_drive_after_gap 70
+//#define encoder_turn_right 195
+//#define encoder_turn_left 205
+//#define encoder_max_brute_force_turn 500
+//
+//#define encoder_align_max_drive 100
+//#define encoder_align_max_turn 75
+//#define encoder_drive_too_few_steps 130
+//#define encoder_gap_right_min_steps 70
+//
+//#define encoder_drive_before_ejection 120
+//
+//#define encoder_drive_after_contact 30
+//#define encoder_drive_after_contact_ir 40
+//#define encoder_turn_after_contact 40
+//#define encoder_turn_after_contact_ir 50
+//
+//#define encoder_drive_after_black_detected 40
+//#define encoder_drive_after_contact_ir_detected 20
+//#define encoder_drive_after_angle_detected 80
+//#define encoder_drive_after_no_angle_detected 80
+//#define encoder_drive_after_wall_front_detected 20
+//#define encoder_drive_after_victim_detected 10
+//
+//#define encoder_drive_after_ramp_up 40
+//#define encoder_drive_after_ramp_down 100
+
+#define encoder_drive 300
+#define encoder_drive_half 150
+#define encoder_drive_after_gap 60
 #define encoder_turn_right 195
 #define encoder_turn_left 205
 #define encoder_max_brute_force_turn 500
@@ -37,7 +70,7 @@
 #define encoder_align_max_drive 100
 #define encoder_align_max_turn 75
 #define encoder_drive_too_few_steps 130
-#define encoder_gap_right_min_steps 100
+#define encoder_gap_right_min_steps 65
 
 #define encoder_drive_before_ejection 120
 
@@ -47,14 +80,14 @@
 #define encoder_turn_after_contact_ir 50
 
 #define encoder_drive_after_black_detected 40
-#define encoder_drive_after_contact_ir_detected 40
+#define encoder_drive_after_contact_ir_detected 10
 #define encoder_drive_after_angle_detected 80
 #define encoder_drive_after_no_angle_detected 80
 #define encoder_drive_after_wall_front_detected 20
-#define encoder_drive_after_victm_detected 10
+#define encoder_drive_after_victim_detected 10
 
 #define encoder_drive_after_ramp_up 40
-#define encoder_drive_after_ramp_down 100
+#define encoder_drive_after_ramp_down 80
 
 /*----------velocity related values----------*/
 #define velocity_drive 210
@@ -66,11 +99,19 @@
 #define velocity_align_drive 130
 
 /*----------ir sensor related values----------*/
-#define ir_wall_threshold 35	
+//#define ir_wall_threshold 35	
+//
+//#define ir_wall_optimal 65
+//#define ir_wall_too_far 55
+//#define ir_wall_too_close 80
+//
+//#define ir_wall_drive 55
 
-#define ir_wall_optimal 65
-#define ir_wall_too_far 55
-#define ir_wall_too_close 80
+#define ir_wall_threshold 35
+
+#define ir_wall_optimal 80
+#define ir_wall_too_far 58
+#define ir_wall_too_close 90
 
 #define ir_wall_drive 55
 
@@ -81,11 +122,11 @@
 #define ultrasonic_wall_drive 25	//
 
 /*----------color sensor related values----------*/
-#define color_victm_default 10
-#define color_victm_high_default 16
-#define color_victm_low_default 4
+#define color_victim_default 10
+#define color_victim_high_default 16
+#define color_victim_low_default 4
 #define color_checkpoint_threshold_default 70
-#define color_victm_range 6
+#define color_victim_range 6
 
 #define greyscale_black_threshold_default 100
 #define greyscale_black_range 25
@@ -98,6 +139,12 @@
 /*----------mapping values----------*/
 #define start_position 16
 #define exit_radius 1
+#define exit_radius_start_tile_no_checkpoint 0
+
+#define victim_counter_exit_threshold 1
+#define checkpoint_counter_exit_threshold 1
+#define victim_start_tile_recovery_threshold 1
+#define checkpoint_start_tile_recovery_threhsold 1
 
 #define recover_start_tile_threshold 5
 
@@ -111,7 +158,7 @@
 #define wb_mask						0b00000100
 #define wl_mask						0b00001000
 #define wall_mask					0b00001111
-#define victm_map					0b00010000
+#define victim_map					0b00010000
 #define black_tile_map				0b00100000
 #define checkpoint_map				0b01000000
 #define visited_map					0b10000000
@@ -138,12 +185,16 @@
 
 #define	led_green_on				PORTL |= (1 << PORTL5) // pin 44
 #define	led_green_off				PORTL &= ~(1 << PORTL5)
+#define led_green_toggle			PINL |= (1 << PINL5)
 #define	led_blue_on					PORTL |= (1 << PORTL6) // pin 43
 #define	led_blue_off				PORTL &= ~(1 << PORTL6)
+#define led_blue_toggle				PINL |= (1 << PINL6)
 #define	led_red_on					PORTL |= (1 << PORTL7) // pin 42
 #define	led_red_off					PORTL &= ~(1 << PORTL7)
+#define led_red_toggle				PINL |= (1 << PINL7)
 #define led_white_on				PORTL |= 0b11100000
 #define led_white_off				PORTL &= 0b00011111
+#define led_white_toggle			PINL |= 0b11100000
 
 #define led_array_direction			PORTC
 
@@ -188,9 +239,9 @@
 #define calibration_button			!(PINA &(1<<PA4))
 
 /*----------color sensor----------*/
-unsigned char color_victm = color_victm_default;
-unsigned char color_victm_high = color_victm_high_default;
-unsigned char color_victm_low = color_victm_low_default;
+unsigned char color_victim = color_victim_default;
+unsigned char color_victim_high = color_victim_high_default;
+unsigned char color_victim_low = color_victim_low_default;
 unsigned char color_checkpoint = 0;
 unsigned char color_checkpoint_threshold = color_checkpoint_threshold_default;
 unsigned char color_white = 0;
@@ -218,16 +269,17 @@ bool wall_detected_while_driving = 0;
 unsigned char turn_right_counter = 0;
 unsigned char straight_counter = 0;
 unsigned char drive_counter = 0;
-unsigned char victm_counter = 0;
+unsigned char victim_counter = 0;
 unsigned char black_tile_counter = 0;
 unsigned char checkpoint_counter = 0;
 
 /*----------field element variables----------*/
-bool victm_flag= 0;
-bool victm_identified = 0;
+bool victim_flag= 0;
+bool victim_identified = 0;
 bool black_tile = 0;
 bool blind_end = 0;
 bool checkpoint = 0;
+bool checkpoint_at_back = 0;
 unsigned char ramp = 0;
 
 /*----------error variables----------*/
@@ -270,9 +322,11 @@ unsigned char last_checkpoint_wall = 0;
 bool unclear_direction = 0;
 
 unsigned char recover_start_tile_counter = 0;
+unsigned char return_to_start_abort_counter = 0;
 
 /*---------wall detection variables----------*/
 unsigned char wall_rel = 0;
+unsigned char wall_rel_us = 0;
 unsigned char wall_abs = 0;
 unsigned char wall_abs_est = 0;
 unsigned char wall_rel_prev = 0;
@@ -306,17 +360,18 @@ void eject(void);
 void exit(void);
 
 void detect_wall(void);
+void detect_wall_us(void);
 void detect_checkpoint(void);
-void detect_victm (void);
+void detect_victim (void);
 unsigned char calculate_absolute_wall(unsigned char direction_input, unsigned char wall_input);
 
 void handle_map(void);
 void recover_map(void);
 void add_black_tile(void);
-void add_victm(void);
+void add_victim(void);
 void clear_black_tile(void);
 bool check_known_black_tile(unsigned char side_input);
-bool check_known_victm(void);
+bool check_known_victim(void);
 unsigned char get_next_position_x(unsigned char direction_input);
 unsigned char get_next_position_y(unsigned char direction_input);
 
@@ -327,6 +382,8 @@ void color_sensor_mode(unsigned char mode);
 void reset_run_time(void);
 
 void calibrate(void);
+
+unsigned char get_dif(unsigned char value_a, unsigned char value_b);
 
 int main(void) {
     init();
@@ -348,7 +405,7 @@ int main(void) {
 	led_green_off;
 	
 	while(0) {
-		align_ir_side(0, 2);
+		align_ir_side(1, 3);
 		_delay_ms(5000);
 	}
 	
@@ -376,9 +433,10 @@ int main(void) {
 				_delay_ms(840);
 				led_array &= ~(1 << i);
 			}
+			eject();
 		}
 		
-		if (color < color_victm_high && color > color_victm_low) led_red_on; 
+		if (color < color_victim_high && color > color_victim_low) led_red_on; 
 		else led_red_off;
 		if (color > color_checkpoint_threshold) led_green_on;
 		else led_green_off;
@@ -398,7 +456,7 @@ int main(void) {
 		align_ir(0b00011011); // Ausrichten: Drehen, Wackelausrichten, Vor- und Zurückfahren, an Lücke ausrichten
 		detect_wall(); // Wanderkennung: Absolute Wanddaten werden in "wall_abs" und relative Wanddaten in "wall_rel" gespeichert
 		detect_checkpoint(); // Überprüfung ob aktuelle Kachel Checkpoint ist
-		detect_victm(); // Zusätzlich zum Überprüfen währen des Fahrens gucken ob auf aktueller Kachel Opfer ist
+		detect_victim(); // Zusätzlich zum Überprüfen währen des Fahrens gucken ob auf aktueller Kachel Opfer ist
 		handle_map(); // LOP handling, Einspeicherung von Feldelementen (Wände, Checkpoints, Opfer) in Karte
 		set_data(); // Update der Datenvariablen für Display und DV 
 		
@@ -412,19 +470,21 @@ int main(void) {
 			else if (!(wall_rel & wl_mask) && !check_known_black_tile(3)) turn_direction = 3;
 			else if (!(wall_rel & wb_mask) && !check_known_black_tile(2)) turn_direction = 2;
 		}
-		if (victm_flag && !checkpoint && !check_known_victm() && !lack_of_progress_flag) { // Gucken ob Opfer bei Fahren erkannt wurde und ob es nicht bereits gerettet wurde
-			victm_identified = 1;
+		if (victim_flag && !checkpoint && !check_known_victim() && !lack_of_progress_flag) { // Gucken ob Opfer bei Fahren erkannt wurde und ob es nicht bereits gerettet wurde
+			victim_identified = 1;
 			blink_rescue(); // Rescue-Animation
-			victm_flag = 0; // Zurücksetzten der Opfer-Flag
+			victim_flag = 0; // Zurücksetzten der Opfer-Flag
 		}
 		
-		if (checkpoint && position_x >= (start_position - exit_radius) && position_x <= (start_position + exit_radius) && position_y >= (start_position - exit_radius) && position_y <= (start_position + exit_radius) && !((direction + turn_direction) % 4) && wall_abs == (map[start_position][start_position] & wall_mask) && victm_counter && checkpoint_counter && !lack_of_progress && !lack_of_progress_flag) exit(); // Überprüfung der Exit-Kriterien
+		if ((start_tile_checkpoint && checkpoint && position_x >= (start_position - exit_radius) && position_x <= (start_position + exit_radius) && position_y >= (start_position - exit_radius) && position_y <= (start_position + exit_radius) && !((direction + turn_direction) % 4) && wall_abs == (map[start_position][start_position] & wall_mask) && victim_counter >= victim_counter_exit_threshold && checkpoint_counter >= checkpoint_counter_exit_threshold && !lack_of_progress && !lack_of_progress_flag) ||
+			(!start_tile_checkpoint && position_x >= (start_position - exit_radius_start_tile_no_checkpoint) && position_x <= (start_position + exit_radius_start_tile_no_checkpoint) && position_y >= (start_position - exit_radius_start_tile_no_checkpoint) && position_y <= (start_position + exit_radius_start_tile_no_checkpoint) && !((direction + turn_direction) % 4) && wall_abs == (map[start_position][start_position] & wall_mask) && victim_counter >= victim_counter_exit_threshold && checkpoint_counter >= checkpoint_counter_exit_threshold && !lack_of_progress && !lack_of_progress_flag)) exit(); // Überprüfung der Exit-Kriterien
 		
 		if (!lack_of_progress_flag) {
 			switch (turn_direction) {
 				case 0: // Keine Drehung
 					straight_counter++;
 					drive_direction = 0;
+					turning_failed_counter = 0;
 					break;
 				case 1:
 					turn(0); // Drehung nach rechts
@@ -433,7 +493,7 @@ int main(void) {
 					drive_direction = 0;
 					break;
 				case 2: // 180° Drehung / Rückwärts aus Sackgasse fahren
-					if (leave_blind_end_backward && (wall_rel_prev & (wb_mask | wl_mask)) != wl_mask && !ramp && !victm_identified && !black_tile) drive_direction = 1; //wenn in Sackgasse und nach dem dem nächsten fahren sowieso Drehung nötig wäre und keine Rampe, rückwärts Ausparken (aktuell noch nich nach Schwarzer Platte möglich)
+					if (leave_blind_end_backward && (wall_rel_prev & (wb_mask | wl_mask)) != wl_mask && !ramp && !victim_identified && !black_tile && !checkpoint && !(!start_tile_checkpoint && start_tile_recovery && (map[start_position][start_position] & wall_mask) == (wr_mask | wb_mask | wl_mask))) drive_direction = 1; //wenn in Sackgasse und nach dem dem nächsten fahren sowieso Drehung nötig wäre und keine Rampe, rückwärts Ausparken (aktuell noch nich nach Schwarzer Platte möglich)
 					else { // sonst 180° Drehung nach links
 						turn(1);
 						align_ir();
@@ -459,7 +519,8 @@ int main(void) {
 		
 		if (!black_tile && !lack_of_progress_flag) wall_rel_prev = wall_rel;
 		
-		if (checkpoint && calculate_absolute_wall(0, wall_rel) == (map[start_position][start_position] & wall_mask) && victm_counter && checkpoint_counter && start_tile_recovery && start_tile_checkpoint && !lack_of_progress_flag) { // Überprüfung der Exit-ohne-Karte-Kriterien
+		if ((start_tile_checkpoint && !victim_identified && checkpoint && calculate_absolute_wall(0, wall_rel) == (map[start_position][start_position] & wall_mask) && victim_counter >= victim_start_tile_recovery_threshold && checkpoint_counter >= checkpoint_start_tile_recovery_threhsold && !lack_of_progress_flag) ||
+			(!start_tile_checkpoint && !victim_identified && !checkpoint && calculate_absolute_wall(0, wall_rel) == (map[start_position][start_position] & wall_mask) && victim_counter >= victim_start_tile_recovery_threshold && checkpoint_counter >= checkpoint_start_tile_recovery_threhsold && start_tile_recovery && !lack_of_progress_flag)) { // Überprüfung der Exit-ohne-Karte-Kriterien
 			recover_start_tile_counter++; // Counter für Wiedererkennung der Startkachel wird auf 1 gesetzt
 			recover_start_error = 0;
 			direction_est = 0; // Angenommene Richtung wird auf 0, also Startrichtung gesetzt
@@ -474,43 +535,44 @@ int main(void) {
 			led_green_off;
 		}
 		
-		if (victm_identified && !lack_of_progress_flag) { // Gucken ob Opfer nach Fahren erkannt wurde
+		if (victim_identified && !lack_of_progress_flag) { // Gucken ob Opfer nach Fahren erkannt wurde
 			rescue(); // Kit abwerfen
-			victm_identified = 0;
-		} else if (victm_flag && !check_known_victm() && !checkpoint && !lack_of_progress_flag) { // Gucken ob bei Drehung Opfer erkannt wurde
+			victim_identified = 0;
+		} else if (victim_flag && !check_known_victim() && !checkpoint && !lack_of_progress_flag) { // Gucken ob bei Drehung Opfer erkannt wurde
 			blink_rescue(); // Rescue-Animation
 			rescue(); // Kit abwerfen
-			victm_flag = 0;
+			victim_flag = 0;
 		}
 
 		set_data();
 		_delay_ms(100);
-		if (!turning_failed_counter && !lack_of_progress_flag) drive(); // 30cm Fahren, wenn Drehung nicht fehlgeschlagen
+		if (/*!turning_failed_counter &&*/ !lack_of_progress_flag) drive(); // 30cm Fahren, wenn Drehung nicht fehlgeschlagen
 		_delay_ms(100); 
 	}
 }
 
 void set_data(void) {
-	data[0] = 0;
-	data[1] = 0;
-	data[2] = 0;
-	data[3] = 0;
-	data[4] = 0;
-	data[5] = 0;
-	data[6] = 0;
-	data[7] = 0;
-	data[8] = 0;
-	data[9] = 0;
+	data[0] = ir_front_right;
+	data[1] = ir_front_left;
+	data[2] = ir_right_front;
+	data[3] = ir_right_back;
+	data[4] = ir_back_right;
+	data[5] = ir_back_left;
+	data[6] = ir_left_front;
+	data[7] = ir_left_back;
+	data[8] = touch_front_middle_right;
+	data[9] = touch_front_middle_left;
 	set_display_data();
 }
 
 void drive(void) {
 	encoder_counter = 0;
 	black_tile = 0;
-	victm_flag = 0;
+	victim_flag = 0;
 	ramp = 0;
 	driving = 1;
 	stop_after_gap = 0;
+	stop_after_gap_done = 0;
 	contact_counter_right = 0;
 	contact_counter_left = 0;
 	wall_detected_while_driving = 0;
@@ -562,12 +624,13 @@ void drive(void) {
 					encoder_counter = encoder_drive - encoder_drive_after_gap;
 					stop_after_gap = 0;
 					stop_after_gap_done = 1;
+					led_green_on;
 				} else stop_after_gap = 1;
 			}
 			
-			if (color < color_victm_high && color > color_victm_low && encoder_counter > encoder_drive_half && !lack_of_progress_flag) {
-				if (encoder_counter_victm > encoder_drive_after_victm_detected) victm_flag = 1;
-			} else encoder_counter_victm = 0;
+			if (color < color_victim_high && color > color_victim_low && encoder_counter > encoder_drive_half && !lack_of_progress_flag) {
+				if (encoder_counter_victim > encoder_drive_after_victim_detected) victim_flag = 1;
+			} else encoder_counter_victim = 0;
 			
 			if (angle_up || angle_down) {
 				led_array_5_on;
@@ -630,7 +693,7 @@ void drive(void) {
 					stop();
 					align_ir_side(1, 2);
 					align_ir(0b00000001);
-					encoder_counter = encoder_counter_temp_contact  - encoder_drive_after_contact * 2;
+					encoder_counter = encoder_counter_temp_contact  - encoder_drive_after_contact;
 					contact_counter_right++;
 				}
 			} else encoder_counter_ir_contact_right = 0;
@@ -644,7 +707,7 @@ void drive(void) {
 					stop();
 					align_ir_side(0, 2);
 					align_ir(0b00000001);
-					encoder_counter = encoder_counter_temp_contact  - encoder_drive_after_contact * 2;
+					encoder_counter = encoder_counter_temp_contact  - encoder_drive_after_contact;
 					contact_counter_left++;
 				}
 			} else encoder_counter_ir_contact_left = 0;
@@ -658,7 +721,7 @@ void drive(void) {
 				encoder_counter = 0;
 				while (encoder_counter < encoder_turn_after_contact && !lack_of_progress_flag) turn_left(velocity_align_turn);
 				stop();
-				encoder_counter = encoder_counter_temp_contact - encoder_drive_after_contact * 2;
+				encoder_counter = encoder_counter_temp_contact - encoder_drive_after_contact;
 				contact_counter_right++;
 			}
 		
@@ -671,11 +734,41 @@ void drive(void) {
 				encoder_counter = 0;
 				while (encoder_counter < encoder_turn_after_contact && !lack_of_progress_flag) turn_right(velocity_align_turn);
 				stop();
-				encoder_counter = encoder_counter_temp_contact - encoder_drive_after_contact * 2;
+				align_ir(0b00000001);
+				encoder_counter = encoder_counter_temp_contact - encoder_drive_after_contact;
+				contact_counter_left++;
+			}
+			
+			if (touch_front_middle_right && !touch_front_left && ir_front_right < ir_wall_threshold && ir_front_left < ir_wall_threshold && ultrasonic_front > ultrasonic_wall_theshold_front && contact_counter_right < 4 && !lack_of_progress_flag) {
+				stop();
+				encoder_counter_temp_contact = encoder_counter;
+				encoder_counter = 0;
+				while (encoder_counter < encoder_drive_after_contact && !lack_of_progress_flag) backward(velocity_align_drive, velocity_align_drive);
+				stop();
+				encoder_counter = 0;
+				while (encoder_counter < encoder_turn_after_contact && !lack_of_progress_flag) turn_left(velocity_align_turn);
+				stop();
+				align_ir(0b00000001);
+				encoder_counter = encoder_counter_temp_contact - encoder_drive_after_contact;
+				contact_counter_right++;
+			}
+			
+			if (touch_front_middle_left && !touch_front_right && ir_front_left < ir_wall_threshold && ir_front_right < ir_wall_threshold && ultrasonic_front > ultrasonic_wall_theshold_front && contact_counter_left < 4 && !lack_of_progress_flag) {
+				stop();
+				encoder_counter_temp_contact = encoder_counter;
+				encoder_counter = 0;
+				while (encoder_counter < encoder_drive_after_contact * 2 && !lack_of_progress_flag) backward(velocity_align_drive, velocity_align_drive);
+				stop();
+				encoder_counter = 0;
+				while (encoder_counter < encoder_turn_after_contact * 2 && !lack_of_progress_flag) turn_right(velocity_align_turn);
+				stop();
+				align_ir(0b00000001);
+				encoder_counter = encoder_counter_temp_contact - encoder_drive_after_contact;
 				contact_counter_left++;
 			}
 		}
 		stop();
+		led_white_off;
 		driving = 0;
 		if (ramp && !lack_of_progress_flag) {
 			
@@ -731,7 +824,7 @@ void drive(void) {
 			position_y_est += delta_y[direction_est % 4];
 			
 			turning_failed_counter = 0;
-			
+		
 		} else if (encoder_counter < encoder_drive_too_few_steps && !black_tile && !lack_of_progress_flag) {
 			driving_failed = 1;
 			led_blue_on;
@@ -739,6 +832,8 @@ void drive(void) {
 		}
 		drive_counter++;
 		blind_end = 0;
+		checkpoint_at_back = 0;
+		if (checkpoint && !black_tile && !driving_failed) checkpoint_at_back = 1;
 		led_white_off;
 		
 	} else {
@@ -789,7 +884,7 @@ void turn(unsigned char mode) {
 			while (encoder_counter < encoder_turn_right && !lack_of_progress_flag) {
 				if (turning_failed_counter) turn_right(velocity_power_turn);
 				else turn_right(velocity_turn);
-				detect_victm();
+				detect_victim();
 			}
 			stop();
 			direction_last = direction;
@@ -799,7 +894,7 @@ void turn(unsigned char mode) {
 			while (encoder_counter < encoder_turn_left && !lack_of_progress_flag) {
 				if (turning_failed_counter) turn_left(velocity_power_turn);
 				else turn_left(velocity_turn);
-				detect_victm();
+				detect_victim();
 			}
 			stop();
 			direction_last = direction;
@@ -819,7 +914,7 @@ void turn(unsigned char mode) {
 		detect_wall();
 		for (unsigned char i = 0; i < 4; i++) {
 			if (calculate_absolute_wall(i, wall_rel) == wall_before_turn) {
-				if ((direction) !=i) turning_failed_counter++;
+				if (direction !=i) turning_failed_counter++;
 				direction = i;
 				detect_wall();
 				break;
@@ -827,6 +922,7 @@ void turn(unsigned char mode) {
 		}
 	} else turning_failed_counter = 0;
 	
+	checkpoint_at_back = 0;
 	set_data();
 	led_array_direction &= 0b11110000;
 	led_array_direction |= (1 << direction);
@@ -881,27 +977,31 @@ void align_ir(unsigned char mode /* = 0b00001011 */) {
 	bool alignment_side_front_done = 0;
 	
 	detect_wall();
+	detect_wall_us();
+	
+	unsigned char wall_align = (mode & 0b10000000) ? wall_rel : wall_rel_us;
+	
 	if (mode & 0b00000001 && !lack_of_progress_flag) {
 		encoder_counter = 0;
-		if (wall_rel & wr_mask && !lack_of_progress_flag) {
+		if (wall_align & wr_mask && !lack_of_progress_flag) {
 			if (ir_right_front > ir_right_back && !lack_of_progress_flag) {
 				while (ir_right_front > ir_right_back && ir_right_front > ir_wall_threshold && ir_right_back > ir_wall_threshold && encoder_counter < encoder_align_max_turn && !lack_of_progress_flag) turn_left(velocity_align_turn);
 			} else if (ir_right_back > ir_right_front && !lack_of_progress_flag) {
 				while (ir_right_back > ir_right_front && ir_right_front > ir_wall_threshold && ir_right_back > ir_wall_threshold && encoder_counter < encoder_align_max_turn && !lack_of_progress_flag) turn_right(velocity_align_turn);
 			}
-		} else if (wall_rel & wf_mask && !lack_of_progress_flag) {
+		} else if (wall_align & wf_mask && !lack_of_progress_flag) {
 			if (ir_front_right > ir_front_left && !lack_of_progress_flag) {
 				while (ir_front_right > ir_front_left && ir_front_right > ir_wall_threshold && ir_front_left > ir_wall_threshold && encoder_counter < encoder_align_max_turn && !lack_of_progress_flag) turn_right(velocity_align_turn);
 			} else if (ir_front_left > ir_front_right && !lack_of_progress_flag) {
 				while (ir_front_left > ir_front_right && ir_front_right > ir_wall_threshold && ir_front_left > ir_wall_threshold && encoder_counter < encoder_align_max_turn && !lack_of_progress_flag) turn_left(velocity_align_turn);
 			}
-		} else if (wall_rel & wb_mask && !lack_of_progress_flag) {
+		} else if (wall_align & wb_mask && !lack_of_progress_flag) {
 			if (ir_back_right > ir_back_left && !lack_of_progress_flag) {
 				while (ir_back_right > ir_back_left && ir_back_right > ir_wall_threshold && ir_back_left > ir_wall_threshold && encoder_counter < encoder_align_max_turn && !lack_of_progress_flag) turn_left(velocity_align_turn);
 			} else if (ir_back_left > ir_back_right && !lack_of_progress_flag) {
 				while (ir_back_left > ir_back_right && ir_back_right > ir_wall_threshold && ir_back_left > ir_wall_threshold && encoder_counter < encoder_align_max_turn && !lack_of_progress_flag) turn_right(velocity_align_turn);
 			}
-		} else if (wall_rel & wl_mask && !lack_of_progress_flag) {
+		} else if (wall_align & wl_mask && !lack_of_progress_flag) {
 			if (ir_left_front > ir_left_back && !lack_of_progress_flag) {
 				while (ir_left_front > ir_left_back && ir_left_front > ir_wall_threshold && ir_left_back > ir_wall_threshold && encoder_counter < encoder_align_max_turn && !lack_of_progress_flag) turn_right(velocity_align_turn);
 			} else if (ir_left_back > ir_left_front && !lack_of_progress_flag) {
@@ -912,7 +1012,7 @@ void align_ir(unsigned char mode /* = 0b00001011 */) {
 	stop();
 	if (mode & 0b00000010 && turning_failed_counter < 2 && align_side && !angle_up && !angle_down && !lack_of_progress_flag) {
 		unsigned char c = 0;
-		if (wall_rel & wr_mask) {
+		if (wall_align & wr_mask) {
 			if (ir_right_front > ir_wall_too_close && ir_right_back > ir_wall_too_close) {
 				while (ir_right_front > ir_wall_too_close && ir_right_back > ir_wall_too_close && ir_right_front > ir_wall_threshold && ir_right_back > ir_wall_threshold && c < 3 && !lack_of_progress_flag) {
 					align_ir_side(1, 1);
@@ -926,7 +1026,7 @@ void align_ir(unsigned char mode /* = 0b00001011 */) {
 				}
 				alignment_side_done = 1;
 			}
-		} else if (wall_rel & wl_mask) {
+		} else if (wall_align & wl_mask) {
 			if (ir_left_front > ir_wall_too_close && ir_left_back > ir_wall_too_close) {
 				while (ir_left_front > ir_wall_too_close && ir_left_back > ir_wall_too_close && ir_left_front > ir_wall_threshold && ir_left_back > ir_wall_threshold && c < 3 && !lack_of_progress_flag) {
 					align_ir_side(0, 1);
@@ -943,17 +1043,17 @@ void align_ir(unsigned char mode /* = 0b00001011 */) {
 		}
 		if (mode & 0b00000001 && alignment_side_done && !lack_of_progress_flag) align_ir(0b00000001);
 	}
-	if (mode & 0b00000100 && !angle_up && !angle_down && !(wall_rel & (wf_mask | wr_mask | wl_mask)) && !lack_of_progress_flag) {
-		if (ir_front_right > ir_wall_threshold && ir_front_left < ir_wall_threshold && ir_front_middle_right < ir_wall_threshold && ir_front_middle_left < ir_wall_threshold && ultrasonic_front > ultrasonic_wall_theshold_front && !lack_of_progress_flag) {
+	if (mode & 0b00000100 && !angle_up && !angle_down && !(wall_align & wf_mask) && !lack_of_progress_flag) {
+		if (!(wall_align & wr_mask) && ir_front_right > ir_wall_threshold && ir_front_left < ir_wall_threshold && ir_front_middle_right < ir_wall_threshold && ir_front_middle_left < ir_wall_threshold && ultrasonic_front > ultrasonic_wall_theshold_front && !lack_of_progress_flag) {
 			align_ir_side(1, 2);
-		} else if (ir_front_left > ir_wall_threshold && ir_front_right < ir_wall_threshold && ir_front_middle_right < ir_wall_threshold && ir_front_middle_left < ir_wall_threshold && ultrasonic_front > ultrasonic_wall_theshold_front && !lack_of_progress_flag) {
+		} else if (!(wall_align & wl_mask) && ir_front_left > ir_wall_threshold && ir_front_right < ir_wall_threshold && ir_front_middle_right < ir_wall_threshold && ir_front_middle_left < ir_wall_threshold && ultrasonic_front > ultrasonic_wall_theshold_front && !lack_of_progress_flag) {
 			align_ir_side(0,2);
 		}
 		if (mode & 0b00000001 && alignment_side_front_done && !lack_of_progress_flag) align_ir(0b00000001);
 	}
 	if (mode & 0b00001000 && !lack_of_progress_flag) {
 		encoder_counter = 0;
-		if (wall_rel & wf_mask && !lack_of_progress_flag) {
+		if (wall_align & wf_mask && !lack_of_progress_flag) {
 			if (ir_front_right > ir_wall_optimal && ir_front_left > ir_wall_optimal && ramp != 1) {
 				while (ir_front_right > ir_wall_optimal && ir_front_left > ir_wall_optimal && ir_front_right > ir_wall_threshold && ir_front_left > ir_wall_threshold && encoder_counter < encoder_align_max_drive && !lack_of_progress_flag) backward(velocity_align_drive, velocity_align_drive);
 				alignment_drive_done = 1;
@@ -961,7 +1061,7 @@ void align_ir(unsigned char mode /* = 0b00001011 */) {
 				while (ir_front_right < ir_wall_optimal && ir_front_left < ir_wall_optimal && ir_front_right > ir_wall_threshold && ir_front_left > ir_wall_threshold && encoder_counter < encoder_align_max_drive && !lack_of_progress_flag) forward(velocity_align_drive, velocity_align_drive);
 				alignment_drive_done = 1;
 			}
-			} else if (wall_rel & wb_mask && !lack_of_progress_flag) {
+			} else if (wall_align & wb_mask && !lack_of_progress_flag) {
 			if (ir_back_right > ir_wall_optimal && ir_back_left > ir_wall_optimal) {
 				while (ir_back_right > ir_wall_optimal && ir_back_left > ir_wall_optimal && ir_back_right > ir_wall_threshold && ir_back_left > ir_wall_threshold && encoder_counter < encoder_align_max_drive && !lack_of_progress_flag) forward(velocity_align_drive, velocity_align_drive);
 				alignment_drive_done = 1;
@@ -972,7 +1072,7 @@ void align_ir(unsigned char mode /* = 0b00001011 */) {
 		}
 		if (mode & 0b00000001 && alignment_drive_done && !lack_of_progress_flag) align_ir(0b00000001);
 	}
-	if (mode & 0b00010000 && !alignment_drive_done && !(wall_rel & (wf_mask | wr_mask | wb_mask)) && !lack_of_progress_flag) {
+	if (mode & 0b00010000 && !alignment_drive_done && !(wall_align & (wf_mask | wr_mask | wb_mask)) && !lack_of_progress_flag) {
 		encoder_counter = 0;
 		if (ir_right_front > ir_wall_threshold && ir_right_back < ir_wall_threshold && ultrasonic_right > ultrasonic_wall_threshold_side) {
 			while (ir_right_front > ir_wall_threshold && ir_right_back < ir_wall_threshold && ultrasonic_right > ultrasonic_wall_threshold_side && encoder_counter < encoder_align_max_drive && !lack_of_progress_flag) backward(velocity_align_drive, velocity_align_drive);
@@ -1022,6 +1122,7 @@ void return_to_start(void) {
 	align_ir();
 	_delay_ms(100);
 	drive();
+	_delay_ms(100);
 	turn_direction = 2;
 	while(!lack_of_progress_flag) {
 		align_ir();
@@ -1039,12 +1140,13 @@ void return_to_start(void) {
 			else if (!(wall_rel & wb_mask) && !check_known_black_tile(2)) turn_direction = 2;
 		}
 		set_data();
-		if (checkpoint && !lack_of_progress_flag) exit();
+		if ((start_tile_checkpoint && checkpoint && !lack_of_progress_flag) || (!start_tile_checkpoint && !checkpoint && position_x == start_position && position_y == start_position && wall_abs == (map[start_position][start_position] & wall_mask) && !lack_of_progress_flag)) exit();
 		if (!lack_of_progress_flag) {
 			switch (turn_direction) {
 				case 0:
 					straight_counter++;
 					drive_direction = 0;
+					turning_failed_counter = 0;
 					break;
 				case 1:
 					turn(0);
@@ -1077,6 +1179,8 @@ void return_to_start(void) {
 		if (!turning_failed_counter && !lack_of_progress_flag) drive();
 		_delay_ms(100);
 	}
+	if (lack_of_progress_flag && detect_return_to_start_abort) return_to_start_abort_counter++;
+	if (return_to_start_abort_counter >= return_to_start_abort_threhold) start_tile_recovery = 0;
 }
 
 void handle_map(void) {
@@ -1086,9 +1190,7 @@ void handle_map(void) {
 		led_white_off;
 		while (lack_of_progress_switch) {
 			set_data();
-			led_blue_on;
-			_delay_ms(250);
-			led_blue_off;
+			led_blue_toggle;
 			_delay_ms(250);
 		}
 		_delay_ms(50); //debounce
@@ -1096,8 +1198,8 @@ void handle_map(void) {
 		clear_black_tile();
 		lack_of_progress_flag = 0;
 		lack_of_progress_flag = 0;
-		victm_flag = 0;
-		victm_identified = 0;
+		victim_flag = 0;
+		victim_identified = 0;
 		black_tile = 0;
 		eject_while_driving = 0;
 		recover_start_tile_counter = 0;
@@ -1107,6 +1209,7 @@ void handle_map(void) {
 		blind_end = 0;
 		drive_direction = 0;
 		drive();
+		_delay_ms(100);
 		align_ir();
 		detect_wall();
 		if (unclear_direction) {
@@ -1193,11 +1296,11 @@ void align_ir_side(unsigned char side, unsigned char distance) {
 		while (encoder_counter < 10) turn_left(velocity_turn);
 		for (unsigned char i = 0; i <= distance; i++) {
 			encoder_counter = 0;
-			while (encoder_counter < 12) backward(velocity_drive, velocity_drive);
+			while (encoder_counter < 18) backward(velocity_drive, velocity_drive);
 			encoder_counter = 0;
-			while (encoder_counter < 19) turn_right(velocity_turn);
+			while (encoder_counter < 20) turn_right(velocity_turn);
 			encoder_counter = 0;
-			while (encoder_counter < 13) forward(velocity_drive, velocity_drive);
+			while (encoder_counter < 20) forward(velocity_drive, velocity_drive);
 			encoder_counter = 0;
 			if (i == distance) while (encoder_counter < 10) turn_left(velocity_turn);
 			else while (encoder_counter < 20) turn_left(velocity_turn);
@@ -1208,14 +1311,14 @@ void align_ir_side(unsigned char side, unsigned char distance) {
 		while (encoder_counter < 9) turn_right(velocity_turn);
 		for (unsigned char i = 0; i <= distance; i++) {
 			encoder_counter = 0;
-			while (encoder_counter < 12) backward(velocity_drive, velocity_drive);
+			while (encoder_counter < 18) backward(velocity_drive, velocity_drive);
 			encoder_counter = 0;
 			while (encoder_counter < 20) turn_left(velocity_turn);
 			encoder_counter = 0;
-			while (encoder_counter < 13) forward(velocity_drive, velocity_drive);
+			while (encoder_counter < 20) forward(velocity_drive, velocity_drive);
 			encoder_counter = 0;
 			if (i == distance) while (encoder_counter < 9) turn_right(velocity_turn);
-			else while (encoder_counter < 19) turn_right(velocity_turn);
+			else while (encoder_counter < 18) turn_right(velocity_turn);
 			stop();
 		}
 	}
@@ -1226,7 +1329,7 @@ void detect_wall(void) {
 	wall_rel = 0;
 	if (ir_front_right > ir_wall_threshold && ir_front_left > ir_wall_threshold && ultrasonic_front < ultrasonic_wall_theshold_front) wall_rel |= wf_mask;
 	if (ir_right_front > ir_wall_threshold && ir_right_back > ir_wall_threshold && ultrasonic_right < ultrasonic_wall_threshold_side) wall_rel |= wr_mask;
-	if (ir_back_right > ir_wall_threshold && ir_back_left > ir_wall_threshold) wall_rel |= wb_mask;
+	if (ir_back_right > ir_wall_threshold && ir_back_left > ir_wall_threshold && !checkpoint_at_back) wall_rel |= wb_mask;
 	if (ir_left_front > ir_wall_threshold && ir_left_back > ir_wall_threshold && ultrasonic_left < ultrasonic_wall_threshold_side) wall_rel |= wl_mask;
 	
 	wall_abs = calculate_absolute_wall(direction, wall_rel);
@@ -1237,13 +1340,19 @@ void detect_wall(void) {
 	set_data();
 }
 
-void detect_checkpoint(void) {
-	if (color > color_checkpoint_threshold) checkpoint = 1;
-	else checkpoint = 0;
+void detect_wall_us(void) {
+	wall_rel_us = 0;
+	wall_rel_us |= (ultrasonic_front < ultrasonic_wall_theshold_front) << wf;
+	wall_rel_us |= (ultrasonic_right < ultrasonic_wall_threshold_side) << wr;
+	wall_rel_us |= (ultrasonic_left < ultrasonic_wall_threshold_side) << wl;
 }
 
-void detect_victm(void) {
-	if (color < color_victm_high && color > color_victm_low && !lack_of_progress_flag) victm_flag = 1;
+void detect_checkpoint(void) {
+	checkpoint = (color > color_checkpoint_threshold);
+}
+
+void detect_victim(void) {
+	if (color < color_victim_high && color > color_victim_low && !lack_of_progress_flag) victim_flag = 1;
 }
 
 unsigned char calculate_absolute_wall(unsigned char direction_input, unsigned char wall_input) {
@@ -1301,7 +1410,7 @@ void rescue(void) {
 	if (!lack_of_progress_flag) {
 		if (wall_rel & wb_mask) eject();
 		else eject_while_driving = 1;
-		add_victm();
+		add_victim();
 	}
 }
 
@@ -1364,23 +1473,21 @@ void add_black_tile(void) {
 	map[position_x_next][position_y_next] |= calculate_absolute_wall(direction, wall_next);
 }
 
-void add_victm(void) {
-	if (position_x < start_position * 2 && position_y < start_position * 2 && !lack_of_progress_flag) map[position_x][position_y] |= victm_map;
-	victm_counter++;
+void add_victim(void) {
+	if (position_x < start_position * 2 && position_y < start_position * 2 && !lack_of_progress_flag) map[position_x][position_y] |= victim_map;
+	victim_counter++;
 	set_display_data();
 }
 
-bool check_known_victm(void) {
-	if (position_x < start_position * 2 && position_y < start_position * 2 && (map[position_x][position_y] & victm_map) && (map[position_x][position_y] & wall_mask) == wall_abs && ignore_known_victms) return 1;
-	else return 0;
+bool check_known_victim(void) {
+	return (position_x < start_position * 2 && position_y < start_position * 2 && (map[position_x][position_y] & victim_map) && (map[position_x][position_y] & wall_mask) == wall_abs && ignore_known_victims) ? 1 : 0;
 }
 
 bool check_known_black_tile(unsigned char side_input) {
 	unsigned char black_tile_wall_mask[] = {0b0100, 0b1000, 0b0001, 0b0010};
 	unsigned char position_x_next = get_next_position_x(side_input);
 	unsigned char position_y_next = get_next_position_y(side_input);
-	if((map[position_x_next][position_y_next] & black_tile_map) && (wall_rel & (1 << side_input)) == (calculate_relative_wall(direction, (map[position_x_next][position_y_next] & wall_mask)) & black_tile_wall_mask[side_input]) && (position_x_next != start_position || position_y_next != start_position) && position_x_next < (start_position * 2) && position_y_next < (start_position * 2)) return 1;
-	else return 0;
+	return ((map[position_x_next][position_y_next] & black_tile_map) && (wall_rel & (1 << side_input)) == (calculate_relative_wall(direction, (map[position_x_next][position_y_next] & wall_mask)) & black_tile_wall_mask[side_input]) && (position_x_next != start_position || position_y_next != start_position) && position_x_next < (start_position * 2) && position_y_next < (start_position * 2)) ? 1 : 0;
 }
 
 unsigned char get_next_position_x (unsigned char direction_input) {
@@ -1398,6 +1505,12 @@ unsigned char get_next_position_y (unsigned char direction_input) {
 void reset_run_time(void) {
 	TCNT5 = 0;
 	run_time = 0;
+}
+
+unsigned char get_dif(unsigned char value_a, unsigned char value_b) {
+	return (value_a > value_b) ? value_a - value_b : value_b - value_a;
+	//if (value_a > value_b) return value_a - value_b;
+	//return value_b - value_a;
 }
 
 void set_display_data(unsigned char mode) { //mode = 0: Normal operation	|	mode = 1: Black tile detected
@@ -1425,7 +1538,7 @@ void calibrate(void) {
 	led_red_on;
 	while (!(calibration_button)) set_display_data();
 	_delay_ms(50); //debounce
-	color_victm = color;
+	color_victim = color;
 	led_red_off;
 	while (calibration_button) set_display_data();
 	_delay_ms(50); // debounce
@@ -1451,10 +1564,39 @@ void calibrate(void) {
 	led_green_off;
 	while (calibration_button) set_display_data();
 	_delay_ms(50); // debounce
-	color_victm_high = color_victm + color_victm_range;
-	color_victm_low = color_victm - color_victm_range;
+	color_victim_high = color_victim + color_victim_range;
+	color_victim_low = color_victim - color_victim_range;
 	color_checkpoint_threshold = color_white + ((color_checkpoint - color_white) / 2); //middle between white and checkpoint
 	greyscale_black_threshold_right = greyscale_black_right + greyscale_black_range;
 	greyscale_black_threshold_left = greyscale_black_left + greyscale_black_range;
-	led_array_off;
+	if (get_dif(color_checkpoint_threshold, color_checkpoint_threshold_default) > 20) {
+		while (calibration_button) {
+			led_green_toggle;
+			_delay_ms(100);
+		}
+		_delay_ms(50);
+		while (!(calibration_button)) set_display_data();
+		_delay_ms(50); //debounce
+	}
+	led_white_off;
+	if (get_dif(color_victim, color_victim_default) > 20) {
+		while (calibration_button) {
+			led_red_toggle;
+			_delay_ms(100);
+		}
+		_delay_ms(50);
+		while (!(calibration_button)) set_display_data();
+		_delay_ms(50); //debounce
+	}
+	led_white_off;
+	if (get_dif(greyscale_black_threshold_right, greyscale_black_threshold_default) > 20 || get_dif(greyscale_black_threshold_left, greyscale_black_threshold_default) > 20) {
+		while (calibration_button) {
+			led_blue_toggle;
+			_delay_ms(100);
+		}
+		_delay_ms(50);
+		while (!(calibration_button)) set_display_data();
+		_delay_ms(50); //debounce
+	}
+	led_white_off; 
 }
