@@ -157,27 +157,6 @@ ISR(ADC_vect) { // adc
 	}
 }
 
-//ISR(TWI_vect) {
-	//switch (TWI_counter) {
-		//case 0 : //TWI has been started in ISR Timer2 overflow
-			//TWDR = Register[k]; //Write the tabulator
-			//TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA) | (1<<TWIE); //Initialize the transmission, interrupt enable
-			//TWI_counter++;
-			//break;
-		//case 1 : //TWI has been started in ISR Timer2 overflow
-			//TWDR = data[k]; //Write the tabulator
-			//TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA) | (1<<TWIE); //Initialize the transmission, interrupt enable
-			//TWI_counter++;
-			//break;
-		//case 2 : //Save PEC, but we don't need it! And then stop the transmission
-			//TWCR= (1<<TWINT)|(1<<TWEN)|(1<<TWSTO); //Send stop condition, no more TWI interrupt
-			//break;
-		//default :
-			//TWCR = (1<<TWINT)|(1<<TWEN);
-			//break;
-	//}
-//}
-
 ISR(TWI_vect) {
 	switch(TWSR) {	// Two-Wire-Status-Register
 		case 0x80:	// controller is sending data
